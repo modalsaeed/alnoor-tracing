@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 
 from database import DatabaseManager, PurchaseOrder, Product
+from utils import validate_po_reference, validate_quantity, sanitize_input, normalize_reference
 
 
 class PurchaseOrderDialog(QDialog):
@@ -204,27 +205,37 @@ class PurchaseOrderDialog(QDialog):
     
     def validate_input(self) -> tuple[bool, str]:
         """
-        Validate user input.
+        Validate user input using centralized validators.
         
         Returns:
             Tuple of (is_valid, error_message)
         """
-        po_reference = self.po_reference_input.text().strip()
+        # Sanitize input
+        po_reference = sanitize_input(self.po_reference_input.text())
         product_id = self.product_combo.currentData()
+        quantity = self.quantity_input.value()
         
-        if not po_reference:
-            return False, "PO reference is required."
+        # Validate PO reference
+        is_valid, error_msg = validate_po_reference(po_reference)
+        if not is_valid:
+            return False, f"PO reference error: {error_msg}"
         
+        # Validate product selection
         if not product_id:
             return False, "Please select a product."
         
-        if len(po_reference) < 2:
-            return False, "PO reference must be at least 2 characters."
+        # Validate quantity
+        is_valid, error_msg = validate_quantity(quantity)
+        if not is_valid:
+            return False, f"Quantity error: {error_msg}"
+        
+        # Normalize reference
+        po_reference_normalized = normalize_reference(po_reference)
         
         # Check for duplicate PO reference
-        if not self.is_edit_mode or (self.order and po_reference.upper() != self.order.po_reference):
-            if self.is_po_reference_duplicate(po_reference):
-                return False, f"PO reference '{po_reference.upper()}' already exists. Please use a unique reference."
+        if not self.is_edit_mode or (self.order and po_reference_normalized != self.order.po_reference):
+            if self.is_po_reference_duplicate(po_reference_normalized):
+                return False, f"PO reference '{po_reference_normalized}' already exists. Please use a unique reference."
         
         return True, ""
     
@@ -248,14 +259,15 @@ class PurchaseOrderDialog(QDialog):
             return
         
         try:
-            po_reference = self.po_reference_input.text().strip()
+            # Sanitize and normalize inputs
+            po_reference = normalize_reference(sanitize_input(self.po_reference_input.text()))
             product_id = self.product_combo.currentData()
             quantity = self.quantity_input.value()
-            warehouse = self.warehouse_input.text().strip()
+            warehouse = sanitize_input(self.warehouse_input.text())
             
             if self.is_edit_mode:
                 # Update existing order
-                self.order.po_reference = po_reference.upper()
+                self.order.po_reference = po_reference
                 self.order.warehouse_location = warehouse if warehouse else None
                 
                 # Only update product and quantity if no stock has been used
@@ -274,7 +286,7 @@ class PurchaseOrderDialog(QDialog):
             else:
                 # Create new order
                 new_order = PurchaseOrder(
-                    po_reference=po_reference.upper(),
+                    po_reference=po_reference,
                     product_id=product_id,
                     quantity=quantity,
                     remaining_stock=quantity,  # Initially, remaining = quantity

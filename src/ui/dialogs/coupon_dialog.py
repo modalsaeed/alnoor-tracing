@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 
 from database import DatabaseManager, PatientCoupon, Product, MedicalCentre, DistributionLocation
+from utils import validate_cpr, validate_name, validate_quantity, sanitize_input
 
 
 class CouponDialog(QDialog):
@@ -260,37 +261,45 @@ class CouponDialog(QDialog):
     
     def validate_input(self) -> tuple[bool, str]:
         """
-        Validate user input.
+        Validate user input using centralized validators.
         
         Returns:
             Tuple of (is_valid, error_message)
         """
-        patient_name = self.patient_name_input.text().strip()
-        cpr = self.cpr_input.text().strip()
+        # Sanitize inputs
+        patient_name = sanitize_input(self.patient_name_input.text())
+        cpr = sanitize_input(self.cpr_input.text())
         product_id = self.product_combo.currentData()
         medical_centre_id = self.medical_centre_combo.currentData()
         distribution_location_id = self.distribution_location_combo.currentData()
+        quantity = self.quantity_input.value()
         
-        if not patient_name:
-            return False, "Patient name is required."
+        # Validate patient name
+        is_valid, error_msg = validate_name(patient_name, field_name="Patient name")
+        if not is_valid:
+            return False, error_msg
         
-        if len(patient_name) < 3:
-            return False, "Patient name must be at least 3 characters."
+        # Validate CPR
+        is_valid, error_msg = validate_cpr(cpr)
+        if not is_valid:
+            return False, f"CPR error: {error_msg}"
         
-        if not cpr:
-            return False, "CPR is required."
-        
-        if len(cpr) < 5:
-            return False, "CPR must be at least 5 characters."
-        
+        # Validate product selection
         if not product_id:
             return False, "Please select a product."
         
+        # Validate medical centre selection
         if not medical_centre_id:
             return False, "Please select a medical centre."
         
+        # Validate distribution location selection
         if not distribution_location_id:
             return False, "Please select a distribution location."
+        
+        # Validate quantity
+        is_valid, error_msg = validate_quantity(quantity)
+        if not is_valid:
+            return False, f"Quantity error: {error_msg}"
         
         return True, ""
     
@@ -303,8 +312,9 @@ class CouponDialog(QDialog):
             return
         
         try:
-            patient_name = self.patient_name_input.text().strip()
-            cpr = self.cpr_input.text().strip()
+            # Sanitize inputs
+            patient_name = sanitize_input(self.patient_name_input.text())
+            cpr = sanitize_input(self.cpr_input.text())
             product_id = self.product_combo.currentData()
             quantity = self.quantity_input.value()
             medical_centre_id = self.medical_centre_combo.currentData()

@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 
 from database import DatabaseManager, Product
+from utils import validate_name, validate_reference, sanitize_input, normalize_reference
 
 
 class ProductDialog(QDialog):
@@ -114,30 +115,32 @@ class ProductDialog(QDialog):
     
     def validate_input(self) -> tuple[bool, str]:
         """
-        Validate user input.
+        Validate user input using centralized validators.
         
         Returns:
             Tuple of (is_valid, error_message)
         """
-        name = self.name_input.text().strip()
-        reference = self.reference_input.text().strip()
+        # Sanitize inputs
+        name = sanitize_input(self.name_input.text())
+        reference = sanitize_input(self.reference_input.text())
         
-        if not name:
-            return False, "Product name is required."
+        # Validate product name
+        is_valid, error_msg = validate_name(name, min_length=2, max_length=100)
+        if not is_valid:
+            return False, f"Product name error: {error_msg}"
         
-        if not reference:
-            return False, "Product reference is required."
+        # Validate product reference
+        is_valid, error_msg = validate_reference(reference, min_length=2)
+        if not is_valid:
+            return False, f"Product reference error: {error_msg}"
         
-        if len(name) < 2:
-            return False, "Product name must be at least 2 characters."
-        
-        if len(reference) < 2:
-            return False, "Product reference must be at least 2 characters."
+        # Normalize reference for consistency
+        reference_normalized = normalize_reference(reference)
         
         # Check for duplicate reference (only if creating new or reference changed)
-        if not self.is_edit_mode or (self.product and reference.upper() != self.product.reference):
-            if self.is_reference_duplicate(reference):
-                return False, f"Reference '{reference.upper()}' already exists. Please use a unique reference."
+        if not self.is_edit_mode or (self.product and reference_normalized != self.product.reference):
+            if self.is_reference_duplicate(reference_normalized):
+                return False, f"Reference '{reference_normalized}' already exists. Please use a unique reference."
         
         return True, ""
     
@@ -161,14 +164,15 @@ class ProductDialog(QDialog):
             return
         
         try:
-            name = self.name_input.text().strip()
-            reference = self.reference_input.text().strip()
-            description = self.description_input.toPlainText().strip()
+            # Sanitize and normalize inputs
+            name = sanitize_input(self.name_input.text())
+            reference = normalize_reference(sanitize_input(self.reference_input.text()))
+            description = sanitize_input(self.description_input.toPlainText())
             
             if self.is_edit_mode:
                 # Update existing product
                 self.product.name = name
-                self.product.reference = reference.upper()
+                self.product.reference = reference
                 self.product.description = description if description else None
                 self.db_manager.update(self.product)
                 
@@ -181,7 +185,7 @@ class ProductDialog(QDialog):
                 # Create new product
                 new_product = Product(
                     name=name,
-                    reference=reference.upper(),
+                    reference=reference,
                     description=description if description else None
                 )
                 self.db_manager.add(new_product)

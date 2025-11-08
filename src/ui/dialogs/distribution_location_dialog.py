@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 
 from database import DatabaseManager, DistributionLocation
+from utils import validate_name, validate_reference, validate_phone, sanitize_input, normalize_reference
 
 
 class DistributionLocationDialog(QDialog):
@@ -128,30 +129,39 @@ class DistributionLocationDialog(QDialog):
     
     def validate_input(self) -> tuple[bool, str]:
         """
-        Validate user input.
+        Validate user input using centralized validators.
         
         Returns:
             Tuple of (is_valid, error_message)
         """
-        name = self.name_input.text().strip()
-        reference = self.reference_input.text().strip()
+        # Sanitize inputs
+        name = sanitize_input(self.name_input.text())
+        reference = sanitize_input(self.reference_input.text())
+        phone = sanitize_input(self.phone_input.text()) if hasattr(self, 'phone_input') else ""
         
-        if not name:
-            return False, "Location name is required."
+        # Validate location name
+        is_valid, error_msg = validate_name(name, min_length=2, field_name="Location name")
+        if not is_valid:
+            return False, error_msg
         
-        if not reference:
-            return False, "Location reference is required."
+        # Validate location reference
+        is_valid, error_msg = validate_reference(reference, min_length=2)
+        if not is_valid:
+            return False, f"Location reference error: {error_msg}"
         
-        if len(name) < 2:
-            return False, "Location name must be at least 2 characters."
+        # Validate phone if provided
+        if phone:
+            is_valid, error_msg = validate_phone(phone)
+            if not is_valid:
+                return False, f"Phone error: {error_msg}"
         
-        if len(reference) < 2:
-            return False, "Location reference must be at least 2 characters."
+        # Normalize reference
+        reference_normalized = normalize_reference(reference)
         
         # Check for duplicate reference
-        if not self.is_edit_mode or (self.location and reference.upper() != self.location.reference):
-            if self.is_reference_duplicate(reference):
-                return False, f"Reference '{reference.upper()}' already exists. Please use a unique reference."
+        if not self.is_edit_mode or (self.location and reference_normalized != self.location.reference):
+            if self.is_reference_duplicate(reference_normalized):
+                return False, f"Reference '{reference_normalized}' already exists. Please use a unique reference."
         
         return True, ""
     
