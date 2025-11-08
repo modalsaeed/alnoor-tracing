@@ -22,7 +22,8 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont, QColor
 
 from database import DatabaseManager, Product, PurchaseOrder, PatientCoupon, MedicalCentre, DistributionLocation
-from services.stock_service import StockService
+from services import StockService
+from utils import Colors, Fonts, Spacing, Sizes, StyleSheets, IconStyles, get_card_color
 
 
 class DashboardWidget(QWidget):
@@ -53,33 +54,29 @@ class DashboardWidget(QWidget):
         # Header
         header_layout = QHBoxLayout()
         
-        title = QLabel("📊 Dashboard")
-        title.setStyleSheet("font-size: 24px; font-weight: bold; color: #2c3e50;")
+        title = QLabel(f"{IconStyles.DASHBOARD} Dashboard")
+        title.setStyleSheet(f"""
+            font-size: {Fonts.SIZE_HUGE}px;
+            font-weight: {Fonts.WEIGHT_BOLD};
+            color: {Colors.TEXT_PRIMARY};
+        """)
         header_layout.addWidget(title)
         
         header_layout.addStretch()
         
         # Last updated label
         self.last_updated_label = QLabel()
-        self.last_updated_label.setStyleSheet("color: #7f8c8d; font-style: italic;")
+        self.last_updated_label.setStyleSheet(f"""
+            color: {Colors.TEXT_SECONDARY};
+            font-style: italic;
+            font-size: {Fonts.SIZE_SMALL}px;
+        """)
         header_layout.addWidget(self.last_updated_label)
         
         # Refresh button
-        refresh_btn = QPushButton("🔄 Refresh")
+        refresh_btn = QPushButton(f"{IconStyles.REFRESH} Refresh")
         refresh_btn.clicked.connect(self.load_dashboard_data)
-        refresh_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                padding: 8px 16px;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-        """)
+        refresh_btn.setStyleSheet(StyleSheets.button_primary())
         header_layout.addWidget(refresh_btn)
         
         layout.addLayout(header_layout)
@@ -89,9 +86,9 @@ class DashboardWidget(QWidget):
         # First row - 3 cards
         metrics_row1 = QHBoxLayout()
         
-        self.products_card = self.create_metric_card("📦 Products", "0", "#3498db")
-        self.pos_card = self.create_metric_card("📋 Purchase Orders", "0", "#9b59b6")
-        self.coupons_card = self.create_metric_card("🎫 Total Coupons", "0", "#e67e22")
+        self.products_card = self.create_metric_card(f"{IconStyles.PRODUCTS} Products", "0", get_card_color('products'))
+        self.pos_card = self.create_metric_card(f"{IconStyles.PURCHASE_ORDERS} Purchase Orders", "0", get_card_color('pos'))
+        self.coupons_card = self.create_metric_card(f"{IconStyles.COUPONS} Total Coupons", "0", get_card_color('coupons'))
         
         metrics_row1.addWidget(self.products_card)
         metrics_row1.addWidget(self.pos_card)
@@ -103,10 +100,10 @@ class DashboardWidget(QWidget):
         # Second row - 4 cards (coupons breakdown and locations)
         metrics_row2 = QHBoxLayout()
         
-        self.verified_card = self.create_metric_card("✅ Verified", "0", "#27ae60")
-        self.pending_card = self.create_metric_card("⏳ Pending", "0", "#f39c12")
-        self.centres_card = self.create_metric_card("🏥 Medical Centres", "0", "#16a085")
-        self.locations_card = self.create_metric_card("📍 Distribution Locations", "0", "#8e44ad")
+        self.verified_card = self.create_metric_card(f"{IconStyles.VERIFIED} Verified", "0", Colors.SUCCESS)
+        self.pending_card = self.create_metric_card(f"{IconStyles.PENDING} Pending", "0", Colors.WARNING)
+        self.centres_card = self.create_metric_card(f"{IconStyles.CENTRES} Medical Centres", "0", get_card_color('centres'))
+        self.locations_card = self.create_metric_card(f"{IconStyles.LOCATIONS} Distribution Locations", "0", get_card_color('locations'))
         
         metrics_row2.addWidget(self.verified_card)
         metrics_row2.addWidget(self.pending_card)
@@ -117,19 +114,16 @@ class DashboardWidget(QWidget):
         layout.addSpacing(30)
         
         # Stock alerts section
-        stock_section = QLabel("⚠️ Stock Alerts")
-        stock_section.setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50;")
+        stock_section = QLabel(f"{IconStyles.WARNING} Stock Alerts")
+        stock_section.setStyleSheet(f"""
+            font-size: {Fonts.SIZE_LARGE}px;
+            font-weight: {Fonts.WEIGHT_BOLD};
+            color: {Colors.TEXT_PRIMARY};
+        """)
         layout.addWidget(stock_section)
         
         self.stock_alerts_frame = QFrame()
-        self.stock_alerts_frame.setStyleSheet("""
-            QFrame {
-                background-color: #fff3cd;
-                border-left: 4px solid #ffc107;
-                border-radius: 4px;
-                padding: 15px;
-            }
-        """)
+        self.stock_alerts_frame.setStyleSheet(StyleSheets.alert_box('warning'))
         self.stock_alerts_layout = QVBoxLayout(self.stock_alerts_frame)
         
         self.stock_alerts_label = QLabel("Checking stock levels...")
@@ -141,7 +135,11 @@ class DashboardWidget(QWidget):
         
         # Recent activity section
         activity_section = QLabel("📅 Recent Activity (Last 7 Days)")
-        activity_section.setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50;")
+        activity_section.setStyleSheet(f"""
+            font-size: {Fonts.SIZE_LARGE}px;
+            font-weight: {Fonts.WEIGHT_BOLD};
+            color: {Colors.TEXT_PRIMARY};
+        """)
         layout.addWidget(activity_section)
         
         # Recent coupons table
@@ -164,22 +162,27 @@ class DashboardWidget(QWidget):
         self.recent_table.setAlternatingRowColors(True)
         self.recent_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.recent_table.setMaximumHeight(300)
+        self.recent_table.setStyleSheet(StyleSheets.table())
         
         layout.addWidget(self.recent_table)
         layout.addSpacing(30)
         
         # Quick actions section
         actions_section = QLabel("⚡ Quick Actions")
-        actions_section.setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50;")
+        actions_section.setStyleSheet(f"""
+            font-size: {Fonts.SIZE_LARGE}px;
+            font-weight: {Fonts.WEIGHT_BOLD};
+            color: {Colors.TEXT_PRIMARY};
+        """)
         layout.addWidget(actions_section)
         
         actions_layout = QHBoxLayout()
         
         # Quick action buttons
-        add_product_btn = self.create_action_button("➕ Add Product", "#3498db")
-        add_po_btn = self.create_action_button("📦 Add Purchase Order", "#9b59b6")
-        add_coupon_btn = self.create_action_button("🎫 Add Coupon", "#e67e22")
-        view_reports_btn = self.create_action_button("📊 View Reports", "#16a085")
+        add_product_btn = self.create_action_button(f"{IconStyles.ADD} Add Product", get_card_color('products'))
+        add_po_btn = self.create_action_button(f"{IconStyles.PRODUCTS} Add Purchase Order", get_card_color('pos'))
+        add_coupon_btn = self.create_action_button(f"{IconStyles.COUPONS} Add Coupon", get_card_color('coupons'))
+        view_reports_btn = self.create_action_button(f"{IconStyles.DASHBOARD} View Reports", Colors.INFO)
         
         actions_layout.addWidget(add_product_btn)
         actions_layout.addWidget(add_po_btn)
@@ -201,31 +204,31 @@ class DashboardWidget(QWidget):
     def create_metric_card(self, title: str, value: str, color: str) -> QFrame:
         """Create a metric card widget."""
         card = QFrame()
-        card.setStyleSheet(f"""
-            QFrame {{
-                background-color: white;
-                border-left: 6px solid {color};
-                border-radius: 6px;
-                padding: 20px;
-                min-width: 180px;
-            }}
-        """)
+        card.setStyleSheet(StyleSheets.card(color))
         card.setFrameShape(QFrame.Shape.StyledPanel)
         card.setMinimumHeight(120)
         card.setMinimumWidth(180)
         
         layout = QVBoxLayout(card)
-        layout.setSpacing(10)
+        layout.setSpacing(Spacing.NORMAL)
         
         # Title
         title_label = QLabel(title)
-        title_label.setStyleSheet("font-size: 13px; color: #7f8c8d; font-weight: bold;")
+        title_label.setStyleSheet(f"""
+            font-size: {Fonts.SIZE_SMALL}px;
+            color: {Colors.TEXT_SECONDARY};
+            font-weight: {Fonts.WEIGHT_BOLD};
+        """)
         title_label.setWordWrap(True)
         layout.addWidget(title_label)
         
         # Value
         value_label = QLabel(value)
-        value_label.setStyleSheet(f"font-size: 36px; color: {color}; font-weight: bold;")
+        value_label.setStyleSheet(f"""
+            font-size: {Fonts.SIZE_HUGE}px;
+            color: {color};
+            font-weight: {Fonts.WEIGHT_BOLD};
+        """)
         value_label.setObjectName("value_label")  # For updating later
         layout.addWidget(value_label)
         
@@ -242,21 +245,8 @@ class DashboardWidget(QWidget):
     def create_action_button(self, text: str, color: str) -> QPushButton:
         """Create a quick action button."""
         btn = QPushButton(text)
-        btn.setMinimumHeight(50)
-        btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {color};
-                color: white;
-                padding: 10px 20px;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-                font-size: 14px;
-            }}
-            QPushButton:hover {{
-                opacity: 0.9;
-            }}
-        """)
+        btn.setMinimumHeight(Sizes.BUTTON_HEIGHT)
+        btn.setStyleSheet(StyleSheets.button_primary(color))
         
         # Connect to navigation (to be implemented)
         if "Product" in text:
@@ -327,46 +317,43 @@ class DashboardWidget(QWidget):
             low_stock_products = self.stock_service.get_low_stock_products(threshold=0.20)
             
             if not low_stock_products:
-                no_alerts = QLabel("✅ All products have sufficient stock levels!")
-                no_alerts.setStyleSheet("color: #27ae60; font-weight: bold;")
+                no_alerts = QLabel(f"{IconStyles.VERIFIED} All products have sufficient stock levels!")
+                no_alerts.setStyleSheet(f"""
+                    color: {Colors.SUCCESS};
+                    font-weight: {Fonts.WEIGHT_BOLD};
+                """)
                 self.stock_alerts_layout.addWidget(no_alerts)
                 
-                self.stock_alerts_frame.setStyleSheet("""
-                    QFrame {
-                        background-color: #d4edda;
-                        border-left: 4px solid #28a745;
-                        border-radius: 4px;
-                        padding: 15px;
-                    }
-                """)
+                self.stock_alerts_frame.setStyleSheet(StyleSheets.alert_box('success'))
             else:
-                alert_header = QLabel(f"⚠️ {len(low_stock_products)} product(s) need attention:")
-                alert_header.setStyleSheet("font-weight: bold; color: #856404; margin-bottom: 10px;")
+                alert_header = QLabel(f"{IconStyles.WARNING} {len(low_stock_products)} product(s) need attention:")
+                alert_header.setStyleSheet(f"""
+                    font-weight: {Fonts.WEIGHT_BOLD};
+                    color: {Colors.ALERT_WARNING_TEXT};
+                    margin-bottom: {Spacing.NORMAL}px;
+                """)
                 self.stock_alerts_layout.addWidget(alert_header)
                 
                 for item in low_stock_products:
                     product_name = item['product_name']
-                    current = item['current_stock']
+                    current = item['total_remaining']
                     total = item['total_ordered']
-                    percentage = item['percentage']
+                    percentage = item['usage_percentage']
+                    remaining_pct = 100 - percentage
                     
-                    alert_text = f"• {product_name}: {current} / {total} pieces ({percentage:.1f}% remaining)"
+                    alert_text = f"• {product_name}: {current} / {total} pieces ({remaining_pct:.1f}% remaining)"
                     alert_label = QLabel(alert_text)
-                    alert_label.setStyleSheet("color: #856404; padding: 2px 0;")
+                    alert_label.setStyleSheet(f"""
+                        color: {Colors.ALERT_WARNING_TEXT};
+                        padding: {Spacing.TINY}px 0;
+                    """)
                     self.stock_alerts_layout.addWidget(alert_label)
                 
-                self.stock_alerts_frame.setStyleSheet("""
-                    QFrame {
-                        background-color: #fff3cd;
-                        border-left: 4px solid #ffc107;
-                        border-radius: 4px;
-                        padding: 15px;
-                    }
-                """)
+                self.stock_alerts_frame.setStyleSheet(StyleSheets.alert_box('warning'))
                 
         except Exception as e:
-            error_label = QLabel(f"❌ Error loading stock alerts: {str(e)}")
-            error_label.setStyleSheet("color: #721c24;")
+            error_label = QLabel(f"{IconStyles.ERROR} Error loading stock alerts: {str(e)}")
+            error_label.setStyleSheet(f"color: {Colors.ERROR};")
             self.stock_alerts_layout.addWidget(error_label)
     
     def load_recent_activity(self):
@@ -422,14 +409,15 @@ class DashboardWidget(QWidget):
                 self.recent_table.setItem(row, 4, quantity_item)
                 
                 # Status
-                status_item = QTableWidgetItem("✅ Verified" if coupon.verified else "⏳ Pending")
+                status_text = f"{IconStyles.VERIFIED} Verified" if coupon.verified else f"{IconStyles.PENDING} Pending"
+                status_item = QTableWidgetItem(status_text)
                 status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 if coupon.verified:
-                    status_item.setBackground(QColor("#d4edda"))
-                    status_item.setForeground(QColor("#155724"))
+                    status_item.setBackground(QColor(Colors.ALERT_SUCCESS_BG))
+                    status_item.setForeground(QColor(Colors.SUCCESS))
                 else:
-                    status_item.setBackground(QColor("#fff3cd"))
-                    status_item.setForeground(QColor("#856404"))
+                    status_item.setBackground(QColor(Colors.ALERT_WARNING_BG))
+                    status_item.setForeground(QColor(Colors.WARNING))
                 self.recent_table.setItem(row, 5, status_item)
                 
                 # Verification
