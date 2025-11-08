@@ -1,3 +1,7 @@
 """Services package initialization."""
 
-# Service modules will be added here as they are developed
+from .stock_service import StockService
+
+__all__ = [
+    'StockService',
+]
