@@ -17,6 +17,7 @@ from database import DatabaseManager
 from ui.widgets.products_widget import ProductsWidget
 from ui.widgets.distribution_locations_widget import DistributionLocationsWidget
 from ui.widgets.medical_centres_widget import MedicalCentresWidget
+from ui.widgets.purchase_orders_widget import PurchaseOrdersWidget
 
 
 class MainWindow(QMainWindow):
@@ -88,7 +89,10 @@ class MainWindow(QMainWindow):
         
         # Add tabs with actual widgets
         self.tabs.addTab(self.create_placeholder_tab("Dashboard"), "📊 Dashboard")
-        self.tabs.addTab(self.create_placeholder_tab("Purchase Orders"), "📦 Purchase Orders")
+        
+        # Purchase Orders tab - actual widget
+        self.purchase_orders_widget = PurchaseOrdersWidget(self.db_manager)
+        self.tabs.addTab(self.purchase_orders_widget, "📦 Purchase Orders")
         
         # Products tab - actual widget
         self.products_widget = ProductsWidget(self.db_manager)
