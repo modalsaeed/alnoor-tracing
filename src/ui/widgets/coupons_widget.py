@@ -27,6 +27,7 @@ from PyQt6.QtGui import QColor
 from database import DatabaseManager, PatientCoupon, Product, MedicalCentre, DistributionLocation
 from ui.dialogs.coupon_dialog import CouponDialog
 from ui.dialogs.verify_coupon_dialog import VerifyCouponDialog
+from utils import Colors, Fonts, Spacing, StyleSheets, IconStyles
 
 
 class CouponsWidget(QWidget):
@@ -45,25 +46,34 @@ class CouponsWidget(QWidget):
         layout = QVBoxLayout(self)
         
         # Title and description
-        title = QLabel("🎫 Patient Coupons Management")
-        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50; margin-bottom: 5px;")
+        title = QLabel(f"{IconStyles.COUPONS} Patient Coupons Management")
+        title.setStyleSheet(f"""
+            font-size: {Fonts.SIZE_LARGE}px;
+            font-weight: {Fonts.WEIGHT_BOLD};
+            color: {Colors.TEXT_PRIMARY};
+            margin-bottom: {Spacing.SMALL}px;
+        """)
         layout.addWidget(title)
         
         desc = QLabel("Manage patient coupons, verify distributions, and track product usage")
-        desc.setStyleSheet("color: #7f8c8d; margin-bottom: 15px;")
+        desc.setStyleSheet(f"""
+            color: {Colors.TEXT_SECONDARY};
+            margin-bottom: {Spacing.NORMAL}px;
+        """)
         layout.addWidget(desc)
         
         # Search and filter section
         filter_layout = QHBoxLayout()
         
         # Search box
-        search_label = QLabel("🔍 Search:")
+        search_label = QLabel(f"{IconStyles.SEARCH} Search:")
         filter_layout.addWidget(search_label)
         
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search by patient name, CPR, or verification reference...")
         self.search_input.textChanged.connect(self.apply_filters)
         self.search_input.setMinimumWidth(300)
+        self.search_input.setStyleSheet(StyleSheets.input_field())
         filter_layout.addWidget(self.search_input)
         
         # Verification status filter
@@ -132,74 +142,44 @@ class CouponsWidget(QWidget):
         # Action buttons
         button_layout = QHBoxLayout()
         
-        add_btn = QPushButton("➕ Add Coupon")
+        add_btn = QPushButton(f"{IconStyles.ADD} Add Coupon")
         add_btn.clicked.connect(self.add_coupon)
-        add_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #27ae60;
-                color: white;
-                padding: 8px 16px;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #229954;
-            }
-        """)
+        add_btn.setStyleSheet(StyleSheets.button_primary(Colors.SUCCESS))
         button_layout.addWidget(add_btn)
         
-        verify_btn = QPushButton("✅ Verify Selected")
+        verify_btn = QPushButton(f"{IconStyles.VERIFIED} Verify Selected")
         verify_btn.clicked.connect(self.verify_coupon)
-        verify_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                padding: 8px 16px;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-        """)
+        verify_btn.setStyleSheet(StyleSheets.button_primary(Colors.PRIMARY))
         button_layout.addWidget(verify_btn)
         
-        edit_btn = QPushButton("✏️ Edit")
+        edit_btn = QPushButton(f"{IconStyles.EDIT} Edit")
         edit_btn.clicked.connect(self.edit_coupon)
+        edit_btn.setStyleSheet(StyleSheets.button_secondary())
         button_layout.addWidget(edit_btn)
         
-        delete_btn = QPushButton("🗑️ Delete")
+        delete_btn = QPushButton(f"{IconStyles.DELETE} Delete")
         delete_btn.clicked.connect(self.delete_coupon)
-        delete_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #e74c3c;
-                color: white;
-                padding: 8px 16px;
-                border: none;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #c0392b;
-            }
-        """)
+        delete_btn.setStyleSheet(StyleSheets.button_primary(Colors.ERROR))
         button_layout.addWidget(delete_btn)
         
         button_layout.addStretch()
         
-        refresh_btn = QPushButton("🔄 Refresh")
+        refresh_btn = QPushButton(f"{IconStyles.REFRESH} Refresh")
         refresh_btn.clicked.connect(self.load_coupons)
+        refresh_btn.setStyleSheet(StyleSheets.button_secondary())
         button_layout.addWidget(refresh_btn)
         
         layout.addLayout(button_layout)
         
         # Statistics bar
         self.stats_label = QLabel()
-        self.stats_label.setStyleSheet(
-            "background-color: #ecf0f1; padding: 8px; border-radius: 4px; "
-            "color: #2c3e50; font-weight: bold;"
-        )
+        self.stats_label.setStyleSheet(f"""
+            background-color: {Colors.BG_SECONDARY};
+            padding: {Spacing.SMALL}px;
+            border-radius: {Spacing.TINY}px;
+            color: {Colors.TEXT_PRIMARY};
+            font-weight: {Fonts.WEIGHT_BOLD};
+        """)
         layout.addWidget(self.stats_label)
         
         # Table
@@ -227,6 +207,7 @@ class CouponsWidget(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.table.doubleClicked.connect(self.edit_coupon)
+        self.table.setStyleSheet(StyleSheets.table())
         
         layout.addWidget(self.table)
     
@@ -365,14 +346,15 @@ class CouponsWidget(QWidget):
             self.table.setItem(row, 7, QTableWidgetItem(date_str))
             
             # Status (with color coding)
-            status_item = QTableWidgetItem("✅ Verified" if coupon.verified else "⏳ Pending")
+            status_text = f"{IconStyles.VERIFIED} Verified" if coupon.verified else f"{IconStyles.PENDING} Pending"
+            status_item = QTableWidgetItem(status_text)
             status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             if coupon.verified:
-                status_item.setBackground(QColor("#d4edda"))  # Light green
-                status_item.setForeground(QColor("#155724"))  # Dark green
+                status_item.setBackground(QColor(Colors.ALERT_SUCCESS_BG))
+                status_item.setForeground(QColor(Colors.SUCCESS))
             else:
-                status_item.setBackground(QColor("#fff3cd"))  # Light yellow
-                status_item.setForeground(QColor("#856404"))  # Dark yellow
+                status_item.setBackground(QColor(Colors.ALERT_WARNING_BG))
+                status_item.setForeground(QColor(Colors.WARNING))
             self.table.setItem(row, 8, status_item)
             
             # Verification Reference
@@ -387,10 +369,10 @@ class CouponsWidget(QWidget):
         total_quantity = sum(c.quantity_pieces for c in self.filtered_coupons)
         
         self.stats_label.setText(
-            f"📊 Total: {total} coupons | "
-            f"✅ Verified: {verified} | "
-            f"⏳ Pending: {pending} | "
-            f"📦 Total Quantity: {total_quantity} pieces"
+            f"{IconStyles.DASHBOARD} Total: {total} coupons | "
+            f"{IconStyles.VERIFIED} Verified: {verified} | "
+            f"{IconStyles.PENDING} Pending: {pending} | "
+            f"{IconStyles.PRODUCTS} Total Quantity: {total_quantity} pieces"
         )
     
     def add_coupon(self):

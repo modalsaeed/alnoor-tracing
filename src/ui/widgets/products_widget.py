@@ -28,6 +28,7 @@ from PyQt6.QtGui import QIcon
 
 from database import DatabaseManager, Product
 from ui.dialogs.product_dialog import ProductDialog
+from utils import Colors, Fonts, Spacing, StyleSheets, IconStyles
 
 
 class ProductsWidget(QWidget):
@@ -64,14 +65,21 @@ class ProductsWidget(QWidget):
         """Create header with title and info."""
         layout = QHBoxLayout()
         
-        title = QLabel("📦 Products Management")
-        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50;")
+        title = QLabel(f"{IconStyles.PRODUCTS} Products Management")
+        title.setStyleSheet(f"""
+            font-size: {Fonts.SIZE_LARGE}px;
+            font-weight: {Fonts.WEIGHT_BOLD};
+            color: {Colors.TEXT_PRIMARY};
+        """)
         layout.addWidget(title)
         
         layout.addStretch()
         
         self.count_label = QLabel("Total: 0")
-        self.count_label.setStyleSheet("font-size: 14px; color: #7f8c8d;")
+        self.count_label.setStyleSheet(f"""
+            font-size: {Fonts.SIZE_NORMAL}px;
+            color: {Colors.TEXT_SECONDARY};
+        """)
         layout.addWidget(self.count_label)
         
         return layout
@@ -80,13 +88,14 @@ class ProductsWidget(QWidget):
         """Create search/filter bar."""
         layout = QHBoxLayout()
         
-        search_label = QLabel("🔍 Search:")
+        search_label = QLabel(f"{IconStyles.SEARCH} Search:")
         layout.addWidget(search_label)
         
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search by name or reference...")
         self.search_input.textChanged.connect(self.filter_products)
         self.search_input.setClearButtonEnabled(True)
+        self.search_input.setStyleSheet(StyleSheets.input_field())
         layout.addWidget(self.search_input)
         
         return layout
@@ -110,6 +119,7 @@ class ProductsWidget(QWidget):
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         table.setAlternatingRowColors(True)
         table.setSortingEnabled(True)
+        table.setStyleSheet(StyleSheets.table())
         
         # Double-click to edit
         table.doubleClicked.connect(self.edit_product)
@@ -121,72 +131,31 @@ class ProductsWidget(QWidget):
         layout = QHBoxLayout()
         
         # Add button
-        self.add_btn = QPushButton("➕ Add Product")
+        self.add_btn = QPushButton(f"{IconStyles.ADD} Add Product")
         self.add_btn.clicked.connect(self.add_product)
-        self.add_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #27ae60;
-                color: white;
-                padding: 8px 16px;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #229954;
-            }
-        """)
+        self.add_btn.setStyleSheet(StyleSheets.button_primary(Colors.SUCCESS))
         layout.addWidget(self.add_btn)
         
         # Edit button
-        self.edit_btn = QPushButton("✏️ Edit Product")
+        self.edit_btn = QPushButton(f"{IconStyles.EDIT} Edit Product")
         self.edit_btn.clicked.connect(self.edit_product)
         self.edit_btn.setEnabled(False)
-        self.edit_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                padding: 8px 16px;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-            QPushButton:disabled {
-                background-color: #bdc3c7;
-            }
-        """)
+        self.edit_btn.setStyleSheet(StyleSheets.button_primary(Colors.PRIMARY))
         layout.addWidget(self.edit_btn)
         
         # Delete button
-        self.delete_btn = QPushButton("🗑️ Delete Product")
+        self.delete_btn = QPushButton(f"{IconStyles.DELETE} Delete Product")
         self.delete_btn.clicked.connect(self.delete_product)
         self.delete_btn.setEnabled(False)
-        self.delete_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #e74c3c;
-                color: white;
-                padding: 8px 16px;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #c0392b;
-            }
-            QPushButton:disabled {
-                background-color: #bdc3c7;
-            }
-        """)
+        self.delete_btn.setStyleSheet(StyleSheets.button_primary(Colors.ERROR))
         layout.addWidget(self.delete_btn)
         
         layout.addStretch()
         
         # Refresh button
-        self.refresh_btn = QPushButton("🔄 Refresh")
+        self.refresh_btn = QPushButton(f"{IconStyles.REFRESH} Refresh")
         self.refresh_btn.clicked.connect(self.load_products)
+        self.refresh_btn.setStyleSheet(StyleSheets.button_secondary())
         layout.addWidget(self.refresh_btn)
         
         # Enable/disable buttons based on selection

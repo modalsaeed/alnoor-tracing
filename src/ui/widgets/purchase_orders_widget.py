@@ -22,6 +22,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 
 from database import DatabaseManager, PurchaseOrder, Product
+from utils import Colors, Fonts, Spacing, StyleSheets, IconStyles
 
 
 class PurchaseOrdersWidget(QWidget):
@@ -58,14 +59,21 @@ class PurchaseOrdersWidget(QWidget):
         """Create header with title and info."""
         layout = QHBoxLayout()
         
-        title = QLabel("📦 Purchase Orders Management")
-        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50;")
+        title = QLabel(f"{IconStyles.PURCHASE_ORDERS} Purchase Orders Management")
+        title.setStyleSheet(f"""
+            font-size: {Fonts.SIZE_LARGE}px;
+            font-weight: {Fonts.WEIGHT_BOLD};
+            color: {Colors.TEXT_PRIMARY};
+        """)
         layout.addWidget(title)
         
         layout.addStretch()
         
         self.count_label = QLabel("Total: 0")
-        self.count_label.setStyleSheet("font-size: 14px; color: #7f8c8d;")
+        self.count_label.setStyleSheet(f"""
+            font-size: {Fonts.SIZE_NORMAL}px;
+            color: {Colors.TEXT_SECONDARY};
+        """)
         layout.addWidget(self.count_label)
         
         return layout
@@ -74,13 +82,14 @@ class PurchaseOrdersWidget(QWidget):
         """Create search/filter bar."""
         layout = QHBoxLayout()
         
-        search_label = QLabel("🔍 Search:")
+        search_label = QLabel(f"{IconStyles.SEARCH} Search:")
         layout.addWidget(search_label)
         
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search by PO reference or product...")
         self.search_input.textChanged.connect(self.filter_orders)
         self.search_input.setClearButtonEnabled(True)
+        self.search_input.setStyleSheet(StyleSheets.input_field())
         layout.addWidget(self.search_input)
         
         return layout
@@ -109,6 +118,7 @@ class PurchaseOrdersWidget(QWidget):
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         table.setAlternatingRowColors(True)
         table.setSortingEnabled(True)
+        table.setStyleSheet(StyleSheets.table())
         
         # Double-click to edit
         table.doubleClicked.connect(self.edit_order)
@@ -120,72 +130,31 @@ class PurchaseOrdersWidget(QWidget):
         layout = QHBoxLayout()
         
         # Add button
-        self.add_btn = QPushButton("➕ Add Purchase Order")
+        self.add_btn = QPushButton(f"{IconStyles.ADD} Add Purchase Order")
         self.add_btn.clicked.connect(self.add_order)
-        self.add_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #27ae60;
-                color: white;
-                padding: 8px 16px;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #229954;
-            }
-        """)
+        self.add_btn.setStyleSheet(StyleSheets.button_primary(Colors.SUCCESS))
         layout.addWidget(self.add_btn)
         
         # Edit button
-        self.edit_btn = QPushButton("✏️ Edit Order")
+        self.edit_btn = QPushButton(f"{IconStyles.EDIT} Edit Order")
         self.edit_btn.clicked.connect(self.edit_order)
         self.edit_btn.setEnabled(False)
-        self.edit_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                padding: 8px 16px;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-            QPushButton:disabled {
-                background-color: #bdc3c7;
-            }
-        """)
+        self.edit_btn.setStyleSheet(StyleSheets.button_primary(Colors.PRIMARY))
         layout.addWidget(self.edit_btn)
         
         # Delete button
-        self.delete_btn = QPushButton("🗑️ Delete Order")
+        self.delete_btn = QPushButton(f"{IconStyles.DELETE} Delete Order")
         self.delete_btn.clicked.connect(self.delete_order)
         self.delete_btn.setEnabled(False)
-        self.delete_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #e74c3c;
-                color: white;
-                padding: 8px 16px;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #c0392b;
-            }
-            QPushButton:disabled {
-                background-color: #bdc3c7;
-            }
-        """)
+        self.delete_btn.setStyleSheet(StyleSheets.button_primary(Colors.ERROR))
         layout.addWidget(self.delete_btn)
         
         layout.addStretch()
         
         # Refresh button
-        self.refresh_btn = QPushButton("🔄 Refresh")
+        self.refresh_btn = QPushButton(f"{IconStyles.REFRESH} Refresh")
         self.refresh_btn.clicked.connect(self.load_orders)
+        self.refresh_btn.setStyleSheet(StyleSheets.button_secondary())
         layout.addWidget(self.refresh_btn)
         
         # Enable/disable buttons based on selection
@@ -238,11 +207,14 @@ class PurchaseOrdersWidget(QWidget):
             # Color code based on stock level
             percentage = (order.remaining_stock / order.quantity * 100) if order.quantity > 0 else 0
             if percentage == 0:
-                remaining_item.setBackground(QColor(231, 76, 60, 50))  # Red
+                remaining_item.setBackground(QColor(Colors.ERROR))
+                remaining_item.setForeground(QColor("white"))
             elif percentage <= 20:
-                remaining_item.setBackground(QColor(230, 126, 34, 50))  # Orange
+                remaining_item.setBackground(QColor(Colors.WARNING))
+                remaining_item.setForeground(QColor("white"))
             elif percentage <= 50:
-                remaining_item.setBackground(QColor(241, 196, 15, 50))  # Yellow
+                remaining_item.setBackground(QColor(Colors.INFO))
+                remaining_item.setForeground(QColor("white"))
             
             self.table.setItem(row, 4, remaining_item)
             
@@ -254,17 +226,18 @@ class PurchaseOrdersWidget(QWidget):
             # Status
             if order.remaining_stock == 0:
                 status = "Depleted"
-                status_color = QColor(231, 76, 60, 100)
+                status_color = QColor(Colors.ERROR)
             elif order.remaining_stock == order.quantity:
                 status = "Full"
-                status_color = QColor(46, 204, 113, 100)
+                status_color = QColor(Colors.SUCCESS)
             else:
                 status = "Partial"
-                status_color = QColor(52, 152, 219, 100)
+                status_color = QColor(Colors.INFO)
             
             status_item = QTableWidgetItem(status)
             status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             status_item.setBackground(status_color)
+            status_item.setForeground(QColor("white"))
             self.table.setItem(row, 6, status_item)
         
         self.table.setSortingEnabled(True)
