@@ -14,6 +14,7 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction, QIcon
 
 from database import DatabaseManager
+from ui.widgets.dashboard_widget import DashboardWidget
 from ui.widgets.products_widget import ProductsWidget
 from ui.widgets.distribution_locations_widget import DistributionLocationsWidget
 from ui.widgets.medical_centres_widget import MedicalCentresWidget
@@ -89,7 +90,9 @@ class MainWindow(QMainWindow):
         self.tabs.setTabPosition(QTabWidget.TabPosition.North)
         
         # Add tabs with actual widgets
-        self.tabs.addTab(self.create_placeholder_tab("Dashboard"), "📊 Dashboard")
+        # Dashboard tab - actual widget
+        self.dashboard_widget = DashboardWidget(self.db_manager)
+        self.tabs.addTab(self.dashboard_widget, "📊 Dashboard")
         
         # Purchase Orders tab - actual widget
         self.purchase_orders_widget = PurchaseOrdersWidget(self.db_manager)
