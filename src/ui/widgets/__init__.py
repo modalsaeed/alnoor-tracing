@@ -6,6 +6,7 @@ from .distribution_locations_widget import DistributionLocationsWidget
 from .medical_centres_widget import MedicalCentresWidget
 from .purchase_orders_widget import PurchaseOrdersWidget
 from .coupons_widget import CouponsWidget
+from .reports_widget import ReportsWidget
 
 __all__ = [
     'DashboardWidget',
@@ -13,5 +14,6 @@ __all__ = [
     'DistributionLocationsWidget',
     'MedicalCentresWidget',
     'PurchaseOrdersWidget',
-    'CouponsWidget'
+    'CouponsWidget',
+    'ReportsWidget'
 ]
