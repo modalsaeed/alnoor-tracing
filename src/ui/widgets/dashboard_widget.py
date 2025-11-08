@@ -315,7 +315,7 @@ class DashboardWidget(QWidget):
                     item.widget().deleteLater()
             
             # Get low stock products (default 20% threshold)
-            low_stock_products = self.stock_service.get_low_stock_products(threshold=0.20)
+            low_stock_products = self.stock_service.get_low_stock_products(threshold_percentage=20.0)
             
             if not low_stock_products:
                 no_alerts = QLabel(f"{IconStyles.VERIFIED} All products have sufficient stock levels!")

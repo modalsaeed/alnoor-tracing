@@ -13,7 +13,7 @@ from typing import Optional, Type, TypeVar, List
 from contextlib import contextmanager
 
 from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import sessionmaker, Session, joinedload
 from sqlalchemy.engine import Engine
 
 from .models import (
@@ -207,7 +207,19 @@ class DatabaseManager:
     def get_all(self, model_class: Type[T]) -> List[T]:
         """Get all records of a model."""
         with self.get_session() as session:
-            return session.query(model_class).all()
+            query = session.query(model_class)
+            
+            # Eagerly load relationships to avoid lazy loading issues
+            if model_class == PurchaseOrder:
+                query = query.options(joinedload(PurchaseOrder.product))
+            elif model_class == PatientCoupon:
+                query = query.options(
+                    joinedload(PatientCoupon.product),
+                    joinedload(PatientCoupon.medical_centre),
+                    joinedload(PatientCoupon.distribution_location)
+                )
+            
+            return query.all()
     
     def get_by_id(self, model_class: Type[T], record_id: int) -> Optional[T]:
         """Get a record by ID."""

@@ -436,7 +436,7 @@ class ReportsWidget(QWidget):
             
             total_products = len(stock_summary)
             total_ordered = sum(item['total_ordered'] for item in stock_summary)
-            total_remaining = sum(item['current_stock'] for item in stock_summary)
+            total_remaining = sum(item['total_remaining'] for item in stock_summary)
             total_used = total_ordered - total_remaining
             
             self.stock_summary_label.setText(
@@ -462,26 +462,28 @@ class ReportsWidget(QWidget):
                 self.stock_table.setItem(row, 2, ordered_item)
                 
                 # Remaining
-                remaining_item = QTableWidgetItem(str(item['current_stock']))
+                remaining_item = QTableWidgetItem(str(item['total_remaining']))
                 remaining_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.stock_table.setItem(row, 3, remaining_item)
                 
                 # Used
-                used_item = QTableWidgetItem(str(item['used_stock']))
+                used_item = QTableWidgetItem(str(item['total_used']))
                 used_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.stock_table.setItem(row, 4, used_item)
                 
                 # Status
-                percentage = item['percentage']
-                if percentage == 0:
+                # Calculate remaining percentage (not usage percentage)
+                remaining_percentage = ((item['total_remaining'] / item['total_ordered']) * 100) if item['total_ordered'] > 0 else 0
+                
+                if remaining_percentage == 0:
                     status = "Depleted"
                     color = QColor("#f8d7da")
                     text_color = QColor("#721c24")
-                elif percentage <= 20:
+                elif remaining_percentage <= 20:
                     status = "Critical"
                     color = QColor("#fff3cd")
                     text_color = QColor("#856404")
-                elif percentage <= 50:
+                elif remaining_percentage <= 50:
                     status = "Low"
                     color = QColor("#fff3cd")
                     text_color = QColor("#856404")
@@ -490,7 +492,7 @@ class ReportsWidget(QWidget):
                     color = QColor("#d4edda")
                     text_color = QColor("#155724")
                 
-                status_item = QTableWidgetItem(f"{status} ({percentage:.1f}%)")
+                status_item = QTableWidgetItem(f"{status} ({remaining_percentage:.1f}%)")
                 status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 status_item.setBackground(color)
                 status_item.setForeground(text_color)

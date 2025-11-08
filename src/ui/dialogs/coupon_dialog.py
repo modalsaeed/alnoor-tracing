@@ -57,6 +57,11 @@ class CouponDialog(QDialog):
         # Form
         form_layout = QFormLayout()
         
+        # Coupon Reference (user-entered)
+        self.coupon_ref_input = QLineEdit()
+        self.coupon_ref_input.setPlaceholderText("Enter coupon reference (e.g., CPN-001)")
+        form_layout.addRow("Coupon Ref: *", self.coupon_ref_input)
+        
         # Patient Name
         self.patient_name_input = QLineEdit()
         self.patient_name_input.setPlaceholderText("Enter patient full name")
@@ -237,6 +242,7 @@ class CouponDialog(QDialog):
     def populate_fields(self):
         """Populate form fields with existing coupon data."""
         if self.coupon:
+            self.coupon_ref_input.setText(self.coupon.coupon_reference)
             self.patient_name_input.setText(self.coupon.patient_name)
             self.cpr_input.setText(self.coupon.cpr)
             
@@ -314,6 +320,7 @@ class CouponDialog(QDialog):
         
         try:
             # Sanitize inputs
+            coupon_reference = sanitize_input(self.coupon_ref_input.text()).upper()
             patient_name = sanitize_input(self.patient_name_input.text())
             cpr = sanitize_input(self.cpr_input.text())
             product_id = self.product_combo.currentData()
@@ -321,8 +328,14 @@ class CouponDialog(QDialog):
             medical_centre_id = self.medical_centre_combo.currentData()
             distribution_location_id = self.distribution_location_combo.currentData()
             
+            # Validate coupon reference is not empty
+            if not coupon_reference:
+                QMessageBox.warning(self, "Validation Error", "Coupon reference cannot be empty.")
+                return
+            
             if self.is_edit_mode:
                 # Update existing coupon
+                self.coupon.coupon_reference = coupon_reference
                 self.coupon.patient_name = patient_name
                 self.coupon.cpr = cpr
                 self.coupon.product_id = product_id
@@ -335,11 +348,12 @@ class CouponDialog(QDialog):
                 QMessageBox.information(
                     self,
                     "Success",
-                    f"Coupon for {patient_name} updated successfully!"
+                    f"Coupon {coupon_reference} for {patient_name} updated successfully!"
                 )
             else:
                 # Create new coupon
                 new_coupon = PatientCoupon(
+                    coupon_reference=coupon_reference,
                     patient_name=patient_name,
                     cpr=cpr,
                     product_id=product_id,
