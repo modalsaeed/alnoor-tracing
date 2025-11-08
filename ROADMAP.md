@@ -305,10 +305,10 @@ CRUD Widgets:        ███████████████████�
 Business Logic:      ████████████████████ 100% ✅
 Dashboard/Reports:   ████████████████████ 100% ✅
 UI Polish:           ████████████████████ 100% ✅
-Testing:             ████████████░░░░░░░░  60% 🔨
+Testing:             ████████████████░░░░  80% 🔨
 Packaging:           ░░░░░░░░░░░░░░░░░░░░   0% ⏳
 
-Overall Progress:    ███████████████████░  96%
+Overall Progress:    ███████████████████░  97%
 ```
 
 ---
@@ -322,9 +322,9 @@ Overall Progress:    ███████████████████�
 | Business Logic | 2-3 days | ✅ DONE |
 | Dashboard/Reports | 2 days | ✅ DONE |
 | UI Polish | 2 days | ✅ DONE |
-| Testing | 2 days | 🔨 IN PROGRESS (60%) |
+| Testing | 2 days | 🔨 IN PROGRESS (80%) |
 | Packaging | 1-2 days | ⏳ Pending |
-| **Total** | **14-17 days** | **~96% Complete** |
+| **Total** | **14-17 days** | **~97% Complete** |
 
 ---
 
@@ -363,7 +363,7 @@ Overall Progress:    ███████████████████�
 - ✅ **Coupons widget styled** (verification status badges)
 - ✅ **All widgets using StyleSheets** (table, buttons, inputs, alerts)
 
-### Phase 5: Testing - IN PROGRESS 🔨 (60% Complete)
+### Phase 5: Testing - IN PROGRESS 🔨 (80% Complete)
 - ✅ **Validator tests** (`tests/test_validators.py` - 56 tests, 100% passing)
   - All 11 validator functions covered
   - Edge cases, security, format validation
@@ -379,21 +379,25 @@ Overall Progress:    ███████████████████�
   - FIFO stock deduction logic
   - Multiple verifications, history tracking
   - Edge cases (insufficient stock, duplicates)
-- ⏳ Backup/restore functionality tests
+- ✅ **Backup/Restore tests** (`tests/test_backup_restore.py` - 10 tests, 100% passing)
+  - Backup file creation and naming
+  - Directory auto-creation
+  - Restore with pre-backup safety
+  - Multiple backup/restore cycles
 - ⏳ CSV export tests
 
 ---
 
 ## Next Action Items
 
-### Phase 5: Testing - IN PROGRESS 🔨 (60% Complete)
+### Phase 5: Testing - IN PROGRESS 🔨 (80% Complete)
 1. ✅ Write unit tests for validators (`tests/test_validators.py` - 56 tests passing)
 2. ✅ Write unit tests for database models (`tests/test_models.py` - 25 tests passing)
 3. ✅ Write integration tests for verification workflow (`tests/test_integration.py` - 6 tests passing)
-4. ⏳ Test backup/restore functionality
+4. ✅ Test backup/restore functionality (`tests/test_backup_restore.py` - 10 tests passing)
 5. ⏳ Test CSV export functionality
 
-**Total Tests: 87 passing (56 + 25 + 6)**
+**Total Tests: 97 passing (56 + 25 + 6 + 10)**
 
 ### Final (Packaging - Phase 6)
 6. ⏳ Create PyInstaller spec file
@@ -402,6 +406,6 @@ Overall Progress:    ███████████████████�
 9. ⏳ Write user manual
 10. ⏳ Create deployment guide
 
-**Current Focus**: Testing - Backup/Restore & CSV Export 🧪  
-**Just Completed**: ✅ Integration Tests (6/6 passing) - Complete verification workflow tested!
+**Current Focus**: Testing - CSV Export 🧪  
+**Just Completed**: ✅ Backup/Restore Tests (10/10 passing) - File-level backup and restore operations tested!
 

@@ -219,7 +219,7 @@ class ActivityLog(Base):
     
     @validates('action')
     def validate_action(self, key, value):
-        allowed_actions = ['CREATE', 'UPDATE', 'DELETE', 'VERIFY', 'EXPORT', 'IMPORT', 'BACKUP']
+        allowed_actions = ['CREATE', 'UPDATE', 'DELETE', 'VERIFY', 'EXPORT', 'IMPORT', 'BACKUP', 'RESTORE']
         if value.upper() not in allowed_actions:
             raise ValueError(f"Action must be one of: {', '.join(allowed_actions)}")
         return value.upper()
