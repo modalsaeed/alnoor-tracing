@@ -15,6 +15,7 @@ from PyQt6.QtGui import QAction, QIcon
 
 from database import DatabaseManager
 from ui.widgets.products_widget import ProductsWidget
+from ui.widgets.distribution_locations_widget import DistributionLocationsWidget
 
 
 class MainWindow(QMainWindow):
@@ -92,7 +93,10 @@ class MainWindow(QMainWindow):
         self.products_widget = ProductsWidget(self.db_manager)
         self.tabs.addTab(self.products_widget, "🏷️ Products")
         
-        self.tabs.addTab(self.create_placeholder_tab("Distribution Locations"), "📍 Distribution")
+        # Distribution Locations tab - actual widget
+        self.distribution_widget = DistributionLocationsWidget(self.db_manager)
+        self.tabs.addTab(self.distribution_widget, "📍 Distribution")
+        
         self.tabs.addTab(self.create_placeholder_tab("Medical Centres"), "🏥 Medical Centres")
         self.tabs.addTab(self.create_placeholder_tab("Coupons"), "🎫 Coupons")
         self.tabs.addTab(self.create_placeholder_tab("Reports"), "📄 Reports")
