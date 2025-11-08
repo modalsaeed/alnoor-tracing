@@ -40,7 +40,7 @@ class DatabaseManager:
     _engine: Optional[Engine] = None
     _session_factory: Optional[sessionmaker] = None
     
-    def __new__(cls):
+    def __new__(cls, db_path: Optional[str] = None):
         if cls._instance is None:
             cls._instance = super(DatabaseManager, cls).__new__(cls)
         return cls._instance

@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QStatusBar,
     QPushButton,
+    QApplication,
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction, QIcon
