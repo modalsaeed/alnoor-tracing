@@ -1,3 +1,5 @@
 """UI widgets package."""
 
-# Widget modules will be added here as they are developed
+from .products_widget import ProductsWidget
+
+__all__ = ['ProductsWidget']
