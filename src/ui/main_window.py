@@ -18,6 +18,7 @@ from ui.widgets.products_widget import ProductsWidget
 from ui.widgets.distribution_locations_widget import DistributionLocationsWidget
 from ui.widgets.medical_centres_widget import MedicalCentresWidget
 from ui.widgets.purchase_orders_widget import PurchaseOrdersWidget
+from ui.widgets.coupons_widget import CouponsWidget
 
 
 class MainWindow(QMainWindow):
@@ -106,7 +107,10 @@ class MainWindow(QMainWindow):
         self.medical_centres_widget = MedicalCentresWidget(self.db_manager)
         self.tabs.addTab(self.medical_centres_widget, "🏥 Medical Centres")
         
-        self.tabs.addTab(self.create_placeholder_tab("Coupons"), "🎫 Coupons")
+        # Coupons tab - actual widget
+        self.coupons_widget = CouponsWidget(self.db_manager)
+        self.tabs.addTab(self.coupons_widget, "🎫 Coupons")
+        
         self.tabs.addTab(self.create_placeholder_tab("Reports"), "📄 Reports")
         
         layout.addWidget(self.tabs)

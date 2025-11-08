@@ -4,5 +4,14 @@ from .product_dialog import ProductDialog
 from .distribution_location_dialog import DistributionLocationDialog
 from .medical_centre_dialog import MedicalCentreDialog
 from .purchase_order_dialog import PurchaseOrderDialog
+from .coupon_dialog import CouponDialog
+from .verify_coupon_dialog import VerifyCouponDialog
 
-__all__ = ['ProductDialog', 'DistributionLocationDialog', 'MedicalCentreDialog', 'PurchaseOrderDialog']
+__all__ = [
+    'ProductDialog',
+    'DistributionLocationDialog', 
+    'MedicalCentreDialog',
+    'PurchaseOrderDialog',
+    'CouponDialog',
+    'VerifyCouponDialog'
+]
