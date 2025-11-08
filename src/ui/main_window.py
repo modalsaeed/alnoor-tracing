@@ -14,6 +14,7 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction, QIcon
 
 from database import DatabaseManager
+from ui.widgets.products_widget import ProductsWidget
 
 
 class MainWindow(QMainWindow):
@@ -83,10 +84,14 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.tabs.setTabPosition(QTabWidget.TabPosition.North)
         
-        # TODO: Add actual widgets - for now, placeholders
+        # Add tabs with actual widgets
         self.tabs.addTab(self.create_placeholder_tab("Dashboard"), "📊 Dashboard")
         self.tabs.addTab(self.create_placeholder_tab("Purchase Orders"), "📦 Purchase Orders")
-        self.tabs.addTab(self.create_placeholder_tab("Products"), "🏷️ Products")
+        
+        # Products tab - actual widget
+        self.products_widget = ProductsWidget(self.db_manager)
+        self.tabs.addTab(self.products_widget, "🏷️ Products")
+        
         self.tabs.addTab(self.create_placeholder_tab("Distribution Locations"), "📍 Distribution")
         self.tabs.addTab(self.create_placeholder_tab("Medical Centres"), "🏥 Medical Centres")
         self.tabs.addTab(self.create_placeholder_tab("Coupons"), "🎫 Coupons")
