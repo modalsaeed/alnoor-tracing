@@ -85,36 +85,35 @@ class DashboardWidget(QWidget):
         layout.addLayout(header_layout)
         layout.addSpacing(20)
         
-        # Metrics cards (top row)
-        metrics_layout = QGridLayout()
+        # Metrics cards (2 rows for better visibility)
+        # First row - 3 cards
+        metrics_row1 = QHBoxLayout()
         
-        # Create metric cards
         self.products_card = self.create_metric_card("📦 Products", "0", "#3498db")
         self.pos_card = self.create_metric_card("📋 Purchase Orders", "0", "#9b59b6")
         self.coupons_card = self.create_metric_card("🎫 Total Coupons", "0", "#e67e22")
+        
+        metrics_row1.addWidget(self.products_card)
+        metrics_row1.addWidget(self.pos_card)
+        metrics_row1.addWidget(self.coupons_card)
+        
+        layout.addLayout(metrics_row1)
+        layout.addSpacing(15)
+        
+        # Second row - 4 cards (coupons breakdown and locations)
+        metrics_row2 = QHBoxLayout()
+        
         self.verified_card = self.create_metric_card("✅ Verified", "0", "#27ae60")
         self.pending_card = self.create_metric_card("⏳ Pending", "0", "#f39c12")
-        
-        metrics_layout.addWidget(self.products_card, 0, 0)
-        metrics_layout.addWidget(self.pos_card, 0, 1)
-        metrics_layout.addWidget(self.coupons_card, 0, 2)
-        metrics_layout.addWidget(self.verified_card, 0, 3)
-        metrics_layout.addWidget(self.pending_card, 0, 4)
-        
-        layout.addLayout(metrics_layout)
-        layout.addSpacing(20)
-        
-        # Second row: Locations and centres
-        locations_layout = QHBoxLayout()
-        
         self.centres_card = self.create_metric_card("🏥 Medical Centres", "0", "#16a085")
         self.locations_card = self.create_metric_card("📍 Distribution Locations", "0", "#8e44ad")
         
-        locations_layout.addWidget(self.centres_card)
-        locations_layout.addWidget(self.locations_card)
-        locations_layout.addStretch()
+        metrics_row2.addWidget(self.verified_card)
+        metrics_row2.addWidget(self.pending_card)
+        metrics_row2.addWidget(self.centres_card)
+        metrics_row2.addWidget(self.locations_card)
         
-        layout.addLayout(locations_layout)
+        layout.addLayout(metrics_row2)
         layout.addSpacing(30)
         
         # Stock alerts section
@@ -205,24 +204,28 @@ class DashboardWidget(QWidget):
         card.setStyleSheet(f"""
             QFrame {{
                 background-color: white;
-                border-left: 4px solid {color};
-                border-radius: 4px;
-                padding: 15px;
+                border-left: 6px solid {color};
+                border-radius: 6px;
+                padding: 20px;
+                min-width: 180px;
             }}
         """)
         card.setFrameShape(QFrame.Shape.StyledPanel)
-        card.setMinimumHeight(100)
+        card.setMinimumHeight(120)
+        card.setMinimumWidth(180)
         
         layout = QVBoxLayout(card)
+        layout.setSpacing(10)
         
         # Title
         title_label = QLabel(title)
-        title_label.setStyleSheet("font-size: 12px; color: #7f8c8d; font-weight: bold;")
+        title_label.setStyleSheet("font-size: 13px; color: #7f8c8d; font-weight: bold;")
+        title_label.setWordWrap(True)
         layout.addWidget(title_label)
         
         # Value
         value_label = QLabel(value)
-        value_label.setStyleSheet(f"font-size: 32px; color: {color}; font-weight: bold;")
+        value_label.setStyleSheet(f"font-size: 36px; color: {color}; font-weight: bold;")
         value_label.setObjectName("value_label")  # For updating later
         layout.addWidget(value_label)
         
