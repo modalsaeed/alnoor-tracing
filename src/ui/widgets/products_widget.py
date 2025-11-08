@@ -26,9 +26,10 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon
 
-from database import DatabaseManager, Product
-from ui.dialogs.product_dialog import ProductDialog
-from utils import Colors, Fonts, Spacing, StyleSheets, IconStyles
+from src.database.db_manager import DatabaseManager
+from src.database.models import Product
+from src.ui.dialogs.product_dialog import ProductDialog
+from src.utils import Colors, Fonts, Spacing, StyleSheets, IconStyles
 
 
 class ProductsWidget(QWidget):
@@ -65,7 +66,7 @@ class ProductsWidget(QWidget):
         """Create header with title and info."""
         layout = QHBoxLayout()
         
-        title = QLabel(f"{IconStyles.PRODUCTS} Products Management")
+        title = QLabel(f"{IconStyles.PRODUCT} Products Management")
         title.setStyleSheet(f"""
             font-size: {Fonts.SIZE_LARGE}px;
             font-weight: {Fonts.WEIGHT_BOLD};

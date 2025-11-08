@@ -19,8 +19,9 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 
-from database import DatabaseManager, PatientCoupon
-from services.stock_service import StockService
+from src.database.db_manager import DatabaseManager
+from src.database.models import PatientCoupon
+from src.services.stock_service import StockService
 
 
 class VerifyCouponDialog(QDialog):

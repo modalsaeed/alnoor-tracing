@@ -14,14 +14,14 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction, QIcon
 
-from database import DatabaseManager
-from ui.widgets.dashboard_widget import DashboardWidget
-from ui.widgets.products_widget import ProductsWidget
-from ui.widgets.distribution_locations_widget import DistributionLocationsWidget
-from ui.widgets.medical_centres_widget import MedicalCentresWidget
-from ui.widgets.purchase_orders_widget import PurchaseOrdersWidget
-from ui.widgets.coupons_widget import CouponsWidget
-from ui.widgets.reports_widget import ReportsWidget
+from src.database.db_manager import DatabaseManager
+from src.ui.widgets.dashboard_widget import DashboardWidget
+from src.ui.widgets.products_widget import ProductsWidget
+from src.ui.widgets.distribution_locations_widget import DistributionLocationsWidget
+from src.ui.widgets.medical_centres_widget import MedicalCentresWidget
+from src.ui.widgets.purchase_orders_widget import PurchaseOrdersWidget
+from src.ui.widgets.coupons_widget import CouponsWidget
+from src.ui.widgets.reports_widget import ReportsWidget
 
 
 class MainWindow(QMainWindow):

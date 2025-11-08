@@ -27,8 +27,9 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QColor
 
-from database import DatabaseManager, Product, PurchaseOrder, PatientCoupon, MedicalCentre, DistributionLocation
-from services.stock_service import StockService
+from src.database.db_manager import DatabaseManager
+from src.database.models import Product, PurchaseOrder, PatientCoupon, MedicalCentre, DistributionLocation
+from src.services.stock_service import StockService
 
 
 class ReportsWidget(QWidget):

@@ -20,7 +20,8 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from database import DatabaseManager, MedicalCentre
+from src.database.db_manager import DatabaseManager
+from src.database.models import MedicalCentre
 
 
 class MedicalCentresWidget(QWidget):
@@ -280,7 +281,7 @@ class MedicalCentresWidget(QWidget):
     
     def add_centre(self):
         """Open dialog to add new medical centre."""
-        from ui.dialogs.medical_centre_dialog import MedicalCentreDialog
+        from src.ui.dialogs.medical_centre_dialog import MedicalCentreDialog
         
         dialog = MedicalCentreDialog(self.db_manager, parent=self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
@@ -297,7 +298,7 @@ class MedicalCentresWidget(QWidget):
             )
             return
         
-        from ui.dialogs.medical_centre_dialog import MedicalCentreDialog
+        from src.ui.dialogs.medical_centre_dialog import MedicalCentreDialog
         
         dialog = MedicalCentreDialog(self.db_manager, centre=centre, parent=self)
         if dialog.exec() == QDialog.DialogCode.Accepted:

@@ -18,8 +18,9 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from database import DatabaseManager, Product
-from utils import validate_name, validate_reference, sanitize_input, normalize_reference
+from src.database.db_manager import DatabaseManager
+from src.database.models import Product
+from src.utils import validate_name, validate_reference, sanitize_input, normalize_reference
 
 
 class ProductDialog(QDialog):

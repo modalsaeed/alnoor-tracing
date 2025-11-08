@@ -8,8 +8,8 @@ and coupon verifications.
 from typing import List, Dict, Optional
 from sqlalchemy import func
 
-from database import (
-    DatabaseManager,
+from src.database.db_manager import DatabaseManager
+from src.database.models import (
     Product,
     PurchaseOrder,
     PatientCoupon,

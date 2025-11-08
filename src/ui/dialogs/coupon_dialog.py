@@ -19,8 +19,9 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from database import DatabaseManager, PatientCoupon, Product, MedicalCentre, DistributionLocation
-from utils import validate_cpr, validate_name, validate_quantity, sanitize_input
+from src.database.db_manager import DatabaseManager
+from src.database.models import PatientCoupon, Product, MedicalCentre, DistributionLocation
+from src.utils import validate_cpr, validate_name, validate_quantity, sanitize_input
 
 
 class CouponDialog(QDialog):

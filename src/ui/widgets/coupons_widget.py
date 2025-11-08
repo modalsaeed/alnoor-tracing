@@ -24,10 +24,11 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QColor
 
-from database import DatabaseManager, PatientCoupon, Product, MedicalCentre, DistributionLocation
-from ui.dialogs.coupon_dialog import CouponDialog
-from ui.dialogs.verify_coupon_dialog import VerifyCouponDialog
-from utils import Colors, Fonts, Spacing, StyleSheets, IconStyles
+from src.database.db_manager import DatabaseManager
+from src.database.models import PatientCoupon, Product, MedicalCentre, DistributionLocation
+from src.ui.dialogs.coupon_dialog import CouponDialog
+from src.ui.dialogs.verify_coupon_dialog import VerifyCouponDialog
+from src.utils import Colors, Fonts, Spacing, StyleSheets, IconStyles
 
 
 class CouponsWidget(QWidget):
@@ -46,7 +47,7 @@ class CouponsWidget(QWidget):
         layout = QVBoxLayout(self)
         
         # Title and description
-        title = QLabel(f"{IconStyles.COUPONS} Patient Coupons Management")
+        title = QLabel(f"{IconStyles.COUPON} Patient Coupons Management")
         title.setStyleSheet(f"""
             font-size: {Fonts.SIZE_LARGE}px;
             font-weight: {Fonts.WEIGHT_BOLD};
@@ -372,7 +373,7 @@ class CouponsWidget(QWidget):
             f"{IconStyles.DASHBOARD} Total: {total} coupons | "
             f"{IconStyles.VERIFIED} Verified: {verified} | "
             f"{IconStyles.PENDING} Pending: {pending} | "
-            f"{IconStyles.PRODUCTS} Total Quantity: {total_quantity} pieces"
+            f"{IconStyles.PRODUCT} Total Quantity: {total_quantity} pieces"
         )
     
     def add_coupon(self):

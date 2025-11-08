@@ -10,8 +10,8 @@ sys.path.insert(0, str(src_path))
 from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtCore import Qt
 
-from database import get_db_manager
-from ui.main_window import MainWindow
+from src.database.db_manager import get_db_manager
+from src.ui.main_window import MainWindow
 
 
 def main():

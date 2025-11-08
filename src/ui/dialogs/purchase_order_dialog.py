@@ -20,8 +20,9 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from database import DatabaseManager, PurchaseOrder, Product
-from utils import validate_po_reference, validate_quantity, sanitize_input, normalize_reference
+from src.database.db_manager import DatabaseManager
+from src.database.models import PurchaseOrder, Product
+from src.utils import validate_po_reference, validate_quantity, sanitize_input, normalize_reference
 
 
 class PurchaseOrderDialog(QDialog):

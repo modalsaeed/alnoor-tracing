@@ -18,8 +18,9 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from database import DatabaseManager, MedicalCentre
-from utils import validate_name, validate_reference, validate_phone, sanitize_input, normalize_reference
+from src.database.db_manager import DatabaseManager
+from src.database.models import MedicalCentre
+from src.utils import validate_name, validate_reference, validate_phone, sanitize_input, normalize_reference
 
 
 class MedicalCentreDialog(QDialog):

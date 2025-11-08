@@ -20,7 +20,8 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from database import DatabaseManager, DistributionLocation
+from src.database.db_manager import DatabaseManager
+from src.database.models import DistributionLocation
 
 
 class DistributionLocationsWidget(QWidget):
@@ -280,7 +281,7 @@ class DistributionLocationsWidget(QWidget):
     
     def add_location(self):
         """Open dialog to add new distribution location."""
-        from ui.dialogs.distribution_location_dialog import DistributionLocationDialog
+        from src.ui.dialogs.distribution_location_dialog import DistributionLocationDialog
         
         dialog = DistributionLocationDialog(self.db_manager, parent=self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
@@ -297,7 +298,7 @@ class DistributionLocationsWidget(QWidget):
             )
             return
         
-        from ui.dialogs.distribution_location_dialog import DistributionLocationDialog
+        from src.ui.dialogs.distribution_location_dialog import DistributionLocationDialog
         
         dialog = DistributionLocationDialog(self.db_manager, location=location, parent=self)
         if dialog.exec() == QDialog.DialogCode.Accepted:

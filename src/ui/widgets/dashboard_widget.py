@@ -21,9 +21,10 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont, QColor
 
-from database import DatabaseManager, Product, PurchaseOrder, PatientCoupon, MedicalCentre, DistributionLocation
-from services import StockService
-from utils import Colors, Fonts, Spacing, Sizes, StyleSheets, IconStyles, get_card_color
+from src.database.db_manager import DatabaseManager
+from src.database.models import Product, PurchaseOrder, PatientCoupon, MedicalCentre, DistributionLocation
+from src.services.stock_service import StockService
+from src.utils import Colors, Fonts, Spacing, Sizes, StyleSheets, IconStyles, get_card_color
 
 
 class DashboardWidget(QWidget):
@@ -86,9 +87,9 @@ class DashboardWidget(QWidget):
         # First row - 3 cards
         metrics_row1 = QHBoxLayout()
         
-        self.products_card = self.create_metric_card(f"{IconStyles.PRODUCTS} Products", "0", get_card_color('products'))
-        self.pos_card = self.create_metric_card(f"{IconStyles.PURCHASE_ORDERS} Purchase Orders", "0", get_card_color('pos'))
-        self.coupons_card = self.create_metric_card(f"{IconStyles.COUPONS} Total Coupons", "0", get_card_color('coupons'))
+        self.products_card = self.create_metric_card(f"{IconStyles.PRODUCT} Products", "0", get_card_color('products'))
+        self.pos_card = self.create_metric_card(f"{IconStyles.PURCHASE_ORDER} Purchase Orders", "0", get_card_color('pos'))
+        self.coupons_card = self.create_metric_card(f"{IconStyles.COUPON} Total Coupons", "0", get_card_color('coupons'))
         
         metrics_row1.addWidget(self.products_card)
         metrics_row1.addWidget(self.pos_card)
@@ -102,8 +103,8 @@ class DashboardWidget(QWidget):
         
         self.verified_card = self.create_metric_card(f"{IconStyles.VERIFIED} Verified", "0", Colors.SUCCESS)
         self.pending_card = self.create_metric_card(f"{IconStyles.PENDING} Pending", "0", Colors.WARNING)
-        self.centres_card = self.create_metric_card(f"{IconStyles.CENTRES} Medical Centres", "0", get_card_color('centres'))
-        self.locations_card = self.create_metric_card(f"{IconStyles.LOCATIONS} Distribution Locations", "0", get_card_color('locations'))
+        self.centres_card = self.create_metric_card(f"{IconStyles.MEDICAL_CENTRE} Medical Centres", "0", get_card_color('centres'))
+        self.locations_card = self.create_metric_card(f"{IconStyles.LOCATION} Distribution Locations", "0", get_card_color('locations'))
         
         metrics_row2.addWidget(self.verified_card)
         metrics_row2.addWidget(self.pending_card)
@@ -180,8 +181,8 @@ class DashboardWidget(QWidget):
         
         # Quick action buttons
         add_product_btn = self.create_action_button(f"{IconStyles.ADD} Add Product", get_card_color('products'))
-        add_po_btn = self.create_action_button(f"{IconStyles.PRODUCTS} Add Purchase Order", get_card_color('pos'))
-        add_coupon_btn = self.create_action_button(f"{IconStyles.COUPONS} Add Coupon", get_card_color('coupons'))
+        add_po_btn = self.create_action_button(f"{IconStyles.PRODUCT} Add Purchase Order", get_card_color('pos'))
+        add_coupon_btn = self.create_action_button(f"{IconStyles.COUPON} Add Coupon", get_card_color('coupons'))
         view_reports_btn = self.create_action_button(f"{IconStyles.DASHBOARD} View Reports", Colors.INFO)
         
         actions_layout.addWidget(add_product_btn)
@@ -245,7 +246,7 @@ class DashboardWidget(QWidget):
     def create_action_button(self, text: str, color: str) -> QPushButton:
         """Create a quick action button."""
         btn = QPushButton(text)
-        btn.setMinimumHeight(Sizes.BUTTON_HEIGHT)
+        btn.setMinimumHeight(Sizes.BUTTON_HEIGHT_NORMAL)
         btn.setStyleSheet(StyleSheets.button_primary(color))
         
         # Connect to navigation (to be implemented)

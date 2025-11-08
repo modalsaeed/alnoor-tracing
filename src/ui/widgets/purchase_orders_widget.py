@@ -21,8 +21,9 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 
-from database import DatabaseManager, PurchaseOrder, Product
-from utils import Colors, Fonts, Spacing, StyleSheets, IconStyles
+from src.database.db_manager import DatabaseManager
+from src.database.models import PurchaseOrder, Product
+from src.utils import Colors, Fonts, Spacing, StyleSheets, IconStyles
 
 
 class PurchaseOrdersWidget(QWidget):
@@ -59,7 +60,7 @@ class PurchaseOrdersWidget(QWidget):
         """Create header with title and info."""
         layout = QHBoxLayout()
         
-        title = QLabel(f"{IconStyles.PURCHASE_ORDERS} Purchase Orders Management")
+        title = QLabel(f"{IconStyles.PURCHASE_ORDER} Purchase Orders Management")
         title.setStyleSheet(f"""
             font-size: {Fonts.SIZE_LARGE}px;
             font-weight: {Fonts.WEIGHT_BOLD};
@@ -280,7 +281,7 @@ class PurchaseOrdersWidget(QWidget):
     
     def add_order(self):
         """Open dialog to add new purchase order."""
-        from ui.dialogs.purchase_order_dialog import PurchaseOrderDialog
+        from src.ui.dialogs.purchase_order_dialog import PurchaseOrderDialog
         
         dialog = PurchaseOrderDialog(self.db_manager, parent=self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
@@ -297,7 +298,7 @@ class PurchaseOrdersWidget(QWidget):
             )
             return
         
-        from ui.dialogs.purchase_order_dialog import PurchaseOrderDialog
+        from src.ui.dialogs.purchase_order_dialog import PurchaseOrderDialog
         
         dialog = PurchaseOrderDialog(self.db_manager, order=order, parent=self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
