@@ -149,6 +149,7 @@ class CouponsWidget(QWidget):
         button_layout.addWidget(add_btn)
         
         verify_btn = QPushButton(f"{IconStyles.VERIFIED} Verify Selected")
+        verify_btn.setToolTip("Verify one or more selected coupons (Ctrl+Click for multiple)")
         verify_btn.clicked.connect(self.verify_coupon)
         verify_btn.setStyleSheet(StyleSheets.button_primary(Colors.PRIMARY))
         button_layout.addWidget(verify_btn)
@@ -206,7 +207,7 @@ class CouponsWidget(QWidget):
         
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)  # Allow multi-selection
         self.table.doubleClicked.connect(self.edit_coupon)
         self.table.setStyleSheet(StyleSheets.table())
         
@@ -410,31 +411,50 @@ class CouponsWidget(QWidget):
             self.load_coupons()
     
     def verify_coupon(self):
-        """Open dialog to verify selected coupon."""
-        selected_row = self.table.currentRow()
-        if selected_row < 0:
+        """Open dialog to verify selected coupon(s)."""
+        selected_rows = self.table.selectionModel().selectedRows()
+        if not selected_rows:
             QMessageBox.warning(
                 self,
                 "No Selection",
-                "Please select a coupon to verify."
+                "Please select one or more coupons to verify.\n\n"
+                "Tip: Hold Ctrl to select multiple coupons, or Shift to select a range."
             )
             return
         
-        coupon = self.filtered_coupons[selected_row]
+        # Get selected coupons
+        selected_coupons = [self.filtered_coupons[row.row()] for row in selected_rows]
         
-        # Check if already verified
-        if coupon.verified:
-            QMessageBox.information(
-                self,
-                "Already Verified",
-                f"This coupon was already verified.\n"
-                f"Verification Reference: {coupon.verification_reference}\n"
-                f"Verified on: {coupon.verified_at.strftime('%Y-%m-%d %H:%M')}"
-            )
-            return
+        # Check if any are already verified
+        already_verified = [c for c in selected_coupons if c.verified]
+        if already_verified:
+            if len(already_verified) == len(selected_coupons):
+                # All selected are verified
+                QMessageBox.information(
+                    self,
+                    "Already Verified",
+                    f"All {len(selected_coupons)} selected coupon(s) have already been verified.\n\n"
+                    f"Please select unverified coupons to verify."
+                )
+                return
+            else:
+                # Some are verified
+                reply = QMessageBox.question(
+                    self,
+                    "Some Already Verified",
+                    f"{len(already_verified)} of {len(selected_coupons)} selected coupons are already verified.\n\n"
+                    f"Do you want to continue and verify only the unverified ones?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes
+                )
+                if reply == QMessageBox.StandardButton.No:
+                    return
+                
+                # Filter to only unverified
+                selected_coupons = [c for c in selected_coupons if not c.verified]
         
-        # Open verification dialog
-        dialog = VerifyCouponDialog(self.db_manager, coupon, parent=self)
+        # Open verification dialog with list of coupons
+        dialog = VerifyCouponDialog(self.db_manager, selected_coupons, parent=self)
         if dialog.exec():
             self.load_coupons()
     
