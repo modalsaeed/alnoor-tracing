@@ -1,0 +1,10 @@
+﻿SHA256 Checksums for Alnoor Medical Services v1.0.0
+======================================================================
+
+AlnoorMedicalServices.exe:
+  5D795D80B62A540ED58D3016AC7EFCB9BC8422BC53E18DB66C4B4CF90DDF586F
+
+AlnoorMedicalServices_Setup_v1.0.0.exe:
+  7274A6467AFD53F7FD4BBC5D8FEA5472B183983FE4BCB11D6882612EF0AD99D7
+
+

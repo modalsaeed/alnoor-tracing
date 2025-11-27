@@ -19,9 +19,11 @@ from PyQt6.QtWidgets import (
     QDialog,
 )
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor
 
 from src.database.db_manager import DatabaseManager
-from src.database.models import DistributionLocation
+from src.database.models import DistributionLocation, Transaction, Product, PatientCoupon
+from sqlalchemy import func
 
 
 class DistributionLocationsWidget(QWidget):
@@ -88,9 +90,9 @@ class DistributionLocationsWidget(QWidget):
     def create_table(self) -> QTableWidget:
         """Create distribution locations table."""
         table = QTableWidget()
-        table.setColumnCount(6)
+        table.setColumnCount(7)
         table.setHorizontalHeaderLabels([
-            'ID', 'Name', 'Reference', 'Address', 'Contact Person', 'Phone'
+            'ID', 'Name', 'Reference', 'Address', 'Contact Person', 'Phone', 'Total Stock'
         ])
         
         # Set column widths
@@ -101,6 +103,7 @@ class DistributionLocationsWidget(QWidget):
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
         
         # Table settings
         table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -192,6 +195,97 @@ class DistributionLocationsWidget(QWidget):
         
         return layout
     
+    def get_location_stock(self, location_id: int) -> dict:
+        """
+        Get stock information for a distribution location.
+        
+        Stock calculation:
+        - Stock IN: Sum of all transactions TO this location
+        - Stock OUT: Sum of all coupons FROM this location
+        - Net Stock: Stock IN - Stock OUT
+        
+        Args:
+            location_id: The distribution location ID
+            
+        Returns:
+            Dictionary with total stock and breakdown by product
+        """
+        try:
+            with self.db_manager.get_session() as session:
+                # Get all transactions for this location (Stock IN) grouped by product
+                transactions = session.query(
+                    Transaction.product_id,
+                    Product.name,
+                    func.sum(Transaction.quantity).label('total_in')
+                ).join(
+                    Product, Transaction.product_id == Product.id
+                ).filter(
+                    Transaction.distribution_location_id == location_id
+                ).group_by(
+                    Transaction.product_id, Product.name
+                ).all()
+                
+                # Get all coupons from this location (Stock OUT) grouped by product
+                coupons = session.query(
+                    PatientCoupon.product_id,
+                    Product.name,
+                    func.sum(PatientCoupon.quantity_pieces).label('total_out')
+                ).join(
+                    Product, PatientCoupon.product_id == Product.id
+                ).filter(
+                    PatientCoupon.distribution_location_id == location_id
+                ).group_by(
+                    PatientCoupon.product_id, Product.name
+                ).all()
+                
+                # Create a dictionary to track stock by product
+                stock_by_product = {}
+                
+                # Add transactions (stock IN)
+                for t in transactions:
+                    stock_by_product[t.product_id] = {
+                        'product_name': t.name,
+                        'stock_in': t.total_in,
+                        'stock_out': 0,
+                        'net_stock': t.total_in
+                    }
+                
+                # Subtract coupons (stock OUT)
+                for c in coupons:
+                    if c.product_id in stock_by_product:
+                        stock_by_product[c.product_id]['stock_out'] = c.total_out
+                        stock_by_product[c.product_id]['net_stock'] -= c.total_out
+                    else:
+                        # Coupon exists but no transactions (shouldn't happen, but handle it)
+                        stock_by_product[c.product_id] = {
+                            'product_name': c.name,
+                            'stock_in': 0,
+                            'stock_out': c.total_out,
+                            'net_stock': -c.total_out  # Negative stock (overdrawn)
+                        }
+                
+                # Calculate total net stock
+                total_stock = sum(p['net_stock'] for p in stock_by_product.values())
+                
+                # Create products breakdown list
+                products_breakdown = [
+                    {
+                        'product_id': product_id,
+                        'product_name': data['product_name'],
+                        'quantity': data['net_stock'],
+                        'stock_in': data['stock_in'],
+                        'stock_out': data['stock_out']
+                    }
+                    for product_id, data in stock_by_product.items()
+                ]
+                
+                return {
+                    'total_stock': total_stock,
+                    'products': products_breakdown
+                }
+        except Exception as e:
+            return {'total_stock': 0, 'products': []}
+    
     def load_locations(self):
         """Load all distribution locations from database."""
         try:
@@ -238,6 +332,41 @@ class DistributionLocationsWidget(QWidget):
             phone = location.phone or ""
             phone_item = QTableWidgetItem(phone)
             self.table.setItem(row, 5, phone_item)
+            
+            # Total Stock
+            stock_info = self.get_location_stock(location.id)
+            total_stock = stock_info['total_stock']
+            stock_item = QTableWidgetItem(f"{total_stock} pieces")
+            stock_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            
+            # Add tooltip with product breakdown including IN/OUT
+            if stock_info['products']:
+                tooltip_lines = ["Stock by Product:\n"]
+                for p in stock_info['products']:
+                    tooltip_lines.append(
+                        f"• {p['product_name']}:\n"
+                        f"  ↓ IN (Transactions): {p['stock_in']} pieces\n"
+                        f"  ↑ OUT (Coupons): {p['stock_out']} pieces\n"
+                        f"  = Net: {p['quantity']} pieces"
+                    )
+                stock_item.setToolTip("\n".join(tooltip_lines))
+            else:
+                stock_item.setToolTip("No stock at this location")
+            
+            # Color code based on stock level
+            if total_stock < 0:
+                # Negative stock (overdrawn) - Dark red with bold
+                stock_item.setForeground(QColor("#8b0000"))  # Dark red
+                stock_item.setText(f"⚠️ {total_stock} pieces (OVERDRAWN)")
+            elif total_stock == 0:
+                stock_item.setForeground(QColor("#dc3545"))  # Red
+            elif total_stock < 100:
+                stock_item.setForeground(QColor("#ffc107"))  # Yellow
+            else:
+                stock_item.setForeground(QColor("#28a745"))  # Green
+            
+            stock_item.setData(Qt.ItemDataRole.UserRole, total_stock)  # For sorting
+            self.table.setItem(row, 6, stock_item)
         
         self.table.setSortingEnabled(True)
     

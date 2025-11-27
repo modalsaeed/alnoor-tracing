@@ -98,9 +98,9 @@ class PurchaseOrdersWidget(QWidget):
     def create_table(self) -> QTableWidget:
         """Create purchase orders table."""
         table = QTableWidget()
-        table.setColumnCount(7)
+        table.setColumnCount(9)
         table.setHorizontalHeaderLabels([
-            'ID', 'PO Reference', 'Product', 'Quantity', 'Remaining', 'Warehouse', 'Status'
+            'ID', 'PO Reference', 'Product', 'Quantity', 'Remaining', 'Unit Price', 'Tax', 'Total', 'Status'
         ])
         
         # Set column widths
@@ -110,8 +110,10 @@ class PurchaseOrdersWidget(QWidget):
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents)
         
         # Table settings
         table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -219,10 +221,49 @@ class PurchaseOrdersWidget(QWidget):
             
             self.table.setItem(row, 4, remaining_item)
             
-            # Warehouse location
-            warehouse = order.warehouse_location or "-"
-            warehouse_item = QTableWidgetItem(warehouse)
-            self.table.setItem(row, 5, warehouse_item)
+            # Unit Price
+            if order.unit_price is not None:
+                unit_price = f"{float(order.unit_price):.3f}"
+                unit_item = QTableWidgetItem(unit_price)
+                unit_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                unit_item.setToolTip(f"{float(order.unit_price):.3f} BHD per unit")
+            else:
+                unit_item = QTableWidgetItem("-")
+                unit_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                unit_item.setForeground(QColor(Colors.TEXT_SECONDARY))
+            
+            self.table.setItem(row, 5, unit_item)
+            
+            # Tax
+            if order.tax_rate is not None and order.tax_amount is not None:
+                tax_text = f"{float(order.tax_rate):.1f}%"
+                tax_item = QTableWidgetItem(tax_text)
+                tax_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                tax_item.setToolTip(f"Tax: {float(order.tax_amount):.3f} BHD ({float(order.tax_rate):.1f}%)")
+            else:
+                tax_item = QTableWidgetItem("-")
+                tax_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                tax_item.setForeground(QColor(Colors.TEXT_SECONDARY))
+            
+            self.table.setItem(row, 6, tax_item)
+            
+            # Total (with tax if available)
+            if order.total_with_tax is not None:
+                total_cost = f"{float(order.total_with_tax):.3f}"
+                total_item = QTableWidgetItem(total_cost)
+                total_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                total_item.setForeground(QColor(Colors.SUCCESS))
+                tooltip = f"Subtotal: {float(order.total_without_tax):.3f} BHD\n"
+                if order.tax_amount:
+                    tooltip += f"Tax: {float(order.tax_amount):.3f} BHD\n"
+                tooltip += f"Total: {float(order.total_with_tax):.3f} BHD"
+                total_item.setToolTip(tooltip)
+            else:
+                total_item = QTableWidgetItem("-")
+                total_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                total_item.setForeground(QColor(Colors.TEXT_SECONDARY))
+            
+            self.table.setItem(row, 7, total_item)
             
             # Status
             if order.remaining_stock == 0:
@@ -239,7 +280,7 @@ class PurchaseOrdersWidget(QWidget):
             status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             status_item.setBackground(status_color)
             status_item.setForeground(QColor("white"))
-            self.table.setItem(row, 6, status_item)
+            self.table.setItem(row, 8, status_item)
         
         self.table.setSortingEnabled(True)
     

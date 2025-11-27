@@ -26,7 +26,6 @@ from PyQt6.QtGui import QFont
 
 from src.database.db_manager import DatabaseManager
 from src.database.models import PatientCoupon
-from src.services.stock_service import StockService
 
 
 class VerifyCouponDialog(QDialog):
@@ -36,34 +35,32 @@ class VerifyCouponDialog(QDialog):
         super().__init__(parent)
         self.db_manager = db_manager
         self.coupons = coupons if isinstance(coupons, list) else [coupons]
-        self.stock_service = StockService(db_manager)
         
         self.init_ui()
         self.load_coupon_details()
-        self.check_stock_availability()
     
     def init_ui(self):
         """Initialize the user interface."""
         coupon_count = len(self.coupons)
-        self.setWindowTitle(f"Verify {'Coupons' if coupon_count > 1 else 'Coupon'}")
+        self.setWindowTitle(f"Confirm Delivery - {'Coupons' if coupon_count > 1 else 'Coupon'}")
         self.setMinimumWidth(700)
         self.setMinimumHeight(600)
         
         layout = QVBoxLayout(self)
         
         # Title
-        title = QLabel(f"✅ Verify {coupon_count} {'Coupons' if coupon_count > 1 else 'Coupon'}")
+        title = QLabel(f"✅ Confirm Delivery - {coupon_count} {'Coupons' if coupon_count > 1 else 'Coupon'}")
         title.setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50; margin-bottom: 10px;")
         layout.addWidget(title)
         
         # Info message
         info = QLabel(
-            "The medical centre/ministry will provide a verification reference after confirming the data is correct.\n"
-            "Enter that reference below to mark these coupons as verified and deduct stock."
+            "ℹ️ Verification confirms delivery only. Stock management is handled separately through transactions.\n"
+            "The medical centre/ministry will provide a verification reference after confirming the data is correct."
         )
         info.setStyleSheet(
-            "background-color: #e3f2fd; padding: 10px; border-radius: 4px; "
-            "color: #0c5460; border-left: 4px solid #2196f3;"
+            "background-color: #d1ecf1; padding: 10px; border-radius: 4px; "
+            "color: #0c5460; border-left: 4px solid #17a2b8;"
         )
         info.setWordWrap(True)
         layout.addWidget(info)
@@ -85,17 +82,6 @@ class VerifyCouponDialog(QDialog):
         self.coupons_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.coupons_table.setMaximumHeight(200)
         layout.addWidget(self.coupons_table)
-        
-        layout.addSpacing(15)
-        
-        # Stock availability section
-        stock_label = QLabel("📦 Stock Availability")
-        stock_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #2c3e50;")
-        layout.addWidget(stock_label)
-        
-        self.stock_status_label = QLabel()
-        self.stock_status_label.setWordWrap(True)
-        layout.addWidget(self.stock_status_label)
         
         layout.addSpacing(15)
         
@@ -129,7 +115,7 @@ class VerifyCouponDialog(QDialog):
         cancel_btn.setMinimumWidth(100)
         button_layout.addWidget(cancel_btn)
         
-        self.verify_btn = QPushButton("✅ Verify & Deduct Stock")
+        self.verify_btn = QPushButton("✅ Confirm Delivery")
         self.verify_btn.clicked.connect(self.verify_coupons)
         self.verify_btn.setMinimumWidth(180)
         self.verify_btn.setStyleSheet("""
@@ -145,9 +131,6 @@ class VerifyCouponDialog(QDialog):
             QPushButton:hover {
                 background-color: #229954;
             }
-            QPushButton:disabled {
-                background-color: #95a5a6;
-            }
         """)
         button_layout.addWidget(self.verify_btn)
         
@@ -162,10 +145,10 @@ class VerifyCouponDialog(QDialog):
             self.coupons_table.setItem(row, 0, QTableWidgetItem(coupon.coupon_reference))
             
             # Patient Name
-            self.coupons_table.setItem(row, 1, QTableWidgetItem(coupon.patient_name))
+            self.coupons_table.setItem(row, 1, QTableWidgetItem(coupon.patient_name or "N/A"))
             
             # CPR
-            self.coupons_table.setItem(row, 2, QTableWidgetItem(coupon.cpr))
+            self.coupons_table.setItem(row, 2, QTableWidgetItem(coupon.cpr or "N/A"))
             
             # Product
             product_name = coupon.product.name if coupon.product else "Unknown"
@@ -176,84 +159,10 @@ class VerifyCouponDialog(QDialog):
             qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.coupons_table.setItem(row, 4, qty_item)
     
-    def check_stock_availability(self):
-        """Check if enough stock is available for all coupons."""
-        try:
-            # Group coupons by product and calculate total quantity needed
-            product_requirements = {}
-            for coupon in self.coupons:
-                product_id = coupon.product_id
-                if product_id not in product_requirements:
-                    product_requirements[product_id] = {
-                        'product_name': coupon.product.name if coupon.product else "Unknown",
-                        'total_needed': 0,
-                        'current_stock': 0,
-                        'coupon_count': 0
-                    }
-                product_requirements[product_id]['total_needed'] += coupon.quantity_pieces
-                product_requirements[product_id]['coupon_count'] += 1
-            
-            # Check stock availability for each product
-            all_available = True
-            status_messages = []
-            
-            for product_id, req in product_requirements.items():
-                current_stock = self.stock_service.get_total_stock_by_product(product_id)
-                req['current_stock'] = current_stock
-                
-                is_available, message = self.stock_service.validate_stock_availability(
-                    product_id,
-                    req['total_needed']
-                )
-                
-                if is_available:
-                    remaining = current_stock - req['total_needed']
-                    status_messages.append(
-                        f"✅ {req['product_name']}: {req['total_needed']} pieces available "
-                        f"(Current: {current_stock}, After: {remaining})"
-                    )
-                else:
-                    shortage = req['total_needed'] - current_stock
-                    status_messages.append(
-                        f"❌ {req['product_name']}: Insufficient stock "
-                        f"(Need: {req['total_needed']}, Available: {current_stock}, Short: {shortage})"
-                    )
-                    all_available = False
-            
-            # Update UI based on availability
-            status_text = "\n".join(status_messages)
-            
-            if all_available:
-                self.stock_status_label.setText(
-                    f"✅ All required stock is available for {len(self.coupons)} coupon(s)"
-                )
-                self.stock_status_label.setStyleSheet(
-                    "background-color: #d4edda; padding: 10px; border-radius: 4px; "
-                    "color: #155724; font-weight: bold;"
-                )
-                self.verify_btn.setEnabled(True)
-            else:
-                self.stock_status_label.setText(
-                    f"❌ Insufficient stock for some products"
-                )
-                self.stock_status_label.setStyleSheet(
-                    "background-color: #f8d7da; padding: 10px; border-radius: 4px; "
-                    "color: #721c24; font-weight: bold;"
-                )
-                self.verify_btn.setEnabled(False)
-                
-        except Exception as e:
-            self.stock_status_label.setText(
-                f"❌ Error checking stock: {str(e)}"
-            )
-            self.stock_status_label.setStyleSheet(
-                "background-color: #f8d7da; padding: 10px; border-radius: 4px; "
-                "color: #721c24;"
-            )
-            self.verify_btn.setEnabled(False)
+
     
     def verify_coupons(self):
-        """Verify all coupons and deduct stock."""
+        """Verify all coupons - confirms delivery only, does not affect stock."""
         # Validate verification reference
         verification_ref = self.verification_ref_input.text().strip()
         if not verification_ref:
@@ -267,7 +176,7 @@ class VerifyCouponDialog(QDialog):
         
         # Build confirmation message
         coupon_list = "\n".join([
-            f"  • {c.patient_name} ({c.cpr}) - {c.product.name if c.product else 'Unknown'} - {c.quantity_pieces} pieces"
+            f"  • {c.patient_name or 'N/A'} ({c.cpr or 'N/A'}) - {c.product.name if c.product else 'Unknown'} - {c.quantity_pieces} pieces"
             for c in self.coupons
         ])
         
@@ -275,12 +184,12 @@ class VerifyCouponDialog(QDialog):
         
         reply = QMessageBox.question(
             self,
-            "Confirm Batch Verification",
-            f"Are you sure you want to verify {len(self.coupons)} coupon(s)?\n\n"
+            "Confirm Delivery Verification",
+            f"Are you sure you want to confirm delivery for {len(self.coupons)} coupon(s)?\n\n"
             f"Verification Reference: {verification_ref}\n\n"
             f"Coupons:\n{coupon_list}\n\n"
             f"Total Quantity: {total_quantity} pieces\n\n"
-            f"Stock will be deducted using FIFO method.\n"
+            f"Note: This only confirms delivery. Stock is managed separately through transactions.\n"
             f"This action cannot be undone except by deleting the coupons.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
@@ -299,14 +208,7 @@ class VerifyCouponDialog(QDialog):
             
             for coupon in self.coupons:
                 try:
-                    # Deduct stock using FIFO
-                    self.stock_service.deduct_stock(
-                        coupon.product_id,
-                        coupon.quantity_pieces,
-                        coupon.id
-                    )
-                    
-                    # Update coupon
+                    # Update coupon verification status only
                     coupon.verified = True
                     coupon.verification_reference = verification_ref
                     coupon.verified_at = datetime.now()
@@ -321,11 +223,12 @@ class VerifyCouponDialog(QDialog):
             if verified_count == len(self.coupons):
                 QMessageBox.information(
                     self,
-                    "Batch Verification Successful",
-                    f"✅ Successfully verified {verified_count} coupon(s)!\n\n"
+                    "Delivery Confirmation Successful",
+                    f"✅ Successfully confirmed delivery for {verified_count} coupon(s)!\n\n"
                     f"Verification Reference: {verification_ref}\n"
-                    f"Total Stock Deducted: {total_quantity} pieces\n\n"
-                    f"All coupons have been marked as verified."
+                    f"Total Quantity Verified: {total_quantity} pieces\n\n"
+                    f"All coupons have been marked as verified.\n"
+                    f"Remember to record stock transactions separately."
                 )
                 self.accept()
             else:

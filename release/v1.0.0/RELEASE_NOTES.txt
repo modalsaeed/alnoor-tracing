@@ -1,0 +1,65 @@
+﻿Alnoor Medical Services - Version 1.0.0
+=========================================
+
+Release Date: November 9, 2025
+Build Date: 2025-11-09 19:03:51
+
+INSTALLATION OPTIONS
+--------------------
+
+Option 1: Windows Installer (Recommended)
+   - Run: AlnoorMedicalServices_Setup_v1.0.0.exe
+   - Follow installation wizard
+   - Creates desktop and start menu shortcuts
+   - Sets up application data folders
+   - Includes uninstaller
+
+Option 2: Portable Executable
+   - Run: AlnoorMedicalServices.exe
+   - No installation required
+   - Data stored in application folder
+
+FEATURES
+--------
+
+Product Management
+   - Add, edit, delete medical products
+   - Track stock levels in real-time
+   - Product categories and descriptions
+
+Purchase Orders
+   - Record incoming stock shipments
+   - FIFO (First In, First Out) tracking
+   - Automatic stock updates
+
+Patient Coupons
+   - Manage patient distributions
+   - Batch verification workflow
+   - Multi-coupon selection (Ctrl+Click)
+   - Manual verification reference entry
+   - Stock deduction with FIFO
+
+Medical Centres
+   - Track distribution locations
+   - Associate coupons with centres
+
+Reports & Analytics
+   - Real-time stock reports
+   - FIFO stock usage analysis
+   - Activity audit log
+   - Export to Excel/CSV
+
+SYSTEM REQUIREMENTS
+-------------------
+
+- Windows 10 (64-bit) or later
+- 2 GB RAM (4 GB recommended)
+- 200 MB free space
+- 1280x720 minimum resolution
+
+VERIFICATION
+------------
+
+See CHECKSUMS.txt for SHA256 hashes to verify file integrity.
+
+Copyright (C) 2025 Alnoor Medical Services

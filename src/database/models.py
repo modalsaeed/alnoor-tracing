@@ -17,6 +17,7 @@ from sqlalchemy import (
     ForeignKey,
     Text,
     CheckConstraint,
+    Numeric,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, validates
@@ -61,17 +62,31 @@ class PurchaseOrder(Base):
     quantity = Column(Integer, nullable=False)
     remaining_stock = Column(Integer, nullable=False)
     warehouse_location = Column(String(255), nullable=True)
+    
+    # Pricing fields (optional)
+    unit_price = Column(Numeric(10, 3), nullable=True)  # Unit price in BHD (3 decimal places)
+    tax_rate = Column(Numeric(5, 2), nullable=True)     # Tax rate as percentage (e.g., 10.00 for 10%)
+    tax_amount = Column(Numeric(10, 3), nullable=True)  # Calculated tax amount in BHD
+    total_without_tax = Column(Numeric(10, 3), nullable=True)  # Total before tax
+    total_with_tax = Column(Numeric(10, 3), nullable=True)     # Total including tax
+    
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # Relationships
     product = relationship('Product', back_populates='purchase_orders')
+    transactions = relationship('Transaction', back_populates='purchase_order', cascade='all, delete-orphan')
     
     # Constraints
     __table_args__ = (
         CheckConstraint('quantity >= 0', name='check_quantity_positive'),
         CheckConstraint('remaining_stock >= 0', name='check_remaining_stock_positive'),
         CheckConstraint('remaining_stock <= quantity', name='check_remaining_not_exceed_quantity'),
+        CheckConstraint('unit_price IS NULL OR unit_price >= 0', name='check_unit_price_positive'),
+        CheckConstraint('tax_rate IS NULL OR (tax_rate >= 0 AND tax_rate <= 100)', name='check_tax_rate_valid'),
+        CheckConstraint('tax_amount IS NULL OR tax_amount >= 0', name='check_tax_amount_positive'),
+        CheckConstraint('total_without_tax IS NULL OR total_without_tax >= 0', name='check_total_without_tax_positive'),
+        CheckConstraint('total_with_tax IS NULL OR total_with_tax >= 0', name='check_total_with_tax_positive'),
     )
     
     def __repr__(self):
@@ -106,6 +121,7 @@ class DistributionLocation(Base):
     
     # Relationships
     coupons = relationship('PatientCoupon', back_populates='distribution_location')
+    transactions = relationship('Transaction', back_populates='distribution_location', cascade='all, delete-orphan')
     
     def __repr__(self):
         return f"<DistributionLocation(id={self.id}, name='{self.name}', reference='{self.reference}')>"
@@ -150,8 +166,8 @@ class PatientCoupon(Base):
     __tablename__ = 'patient_coupons'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    patient_name = Column(String(255), nullable=False)
-    cpr = Column(String(20), nullable=False, index=True)  # Civil Personal Registration number
+    patient_name = Column(String(255), nullable=True)  # Made optional
+    cpr = Column(String(20), nullable=True, index=True)  # Made optional - Civil Personal Registration number
     quantity_pieces = Column(Integer, nullable=False)
     coupon_reference = Column(String(100), unique=True, nullable=False, index=True)
     medical_centre_id = Column(Integer, ForeignKey('medical_centres.id'), nullable=False)
@@ -193,10 +209,59 @@ class PatientCoupon(Base):
     
     @validates('cpr')
     def validate_cpr(self, key, value):
+        # CPR is now optional
+        if value and value.strip():
+            # Remove any spaces or dashes for consistency
+            return value.strip().replace('-', '').replace(' ', '')
+        return value
+
+
+class Transaction(Base):
+    """
+    Transactions for tracking product transfers to distribution locations.
+    
+    This table handles stock reduction when products are sent out.
+    Verification (in PatientCoupon) is now just delivery confirmation,
+    not stock deduction.
+    """
+    
+    __tablename__ = 'transactions'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    transaction_reference = Column(String(100), unique=True, nullable=False, index=True)
+    purchase_order_id = Column(Integer, ForeignKey('purchase_orders.id'), nullable=False)
+    product_id = Column(Integer, ForeignKey('products.id'), nullable=False)
+    distribution_location_id = Column(Integer, ForeignKey('distribution_locations.id'), nullable=False)
+    quantity = Column(Integer, nullable=False)
+    transaction_date = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    # Relationships
+    purchase_order = relationship('PurchaseOrder', back_populates='transactions')
+    product = relationship('Product')
+    distribution_location = relationship('DistributionLocation', back_populates='transactions')
+    
+    # Constraints
+    __table_args__ = (
+        CheckConstraint('quantity > 0', name='check_transaction_quantity_positive'),
+    )
+    
+    def __repr__(self):
+        return f"<Transaction(id={self.id}, ref='{self.transaction_reference}', qty={self.quantity})>"
+    
+    @validates('quantity')
+    def validate_quantity(self, key, value):
+        if value <= 0:
+            raise ValueError("Transaction quantity must be greater than 0")
+        return value
+    
+    @validates('transaction_reference')
+    def validate_transaction_reference(self, key, value):
         if not value or not value.strip():
-            raise ValueError("CPR cannot be empty")
-        # Remove any spaces or dashes for consistency
-        return value.strip().replace('-', '').replace(' ', '')
+            raise ValueError("Transaction reference cannot be empty")
+        return value.strip().upper()
 
 
 class ActivityLog(Base):

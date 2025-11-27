@@ -46,8 +46,7 @@ SolidCompression=yes
 
 ; Wizard appearance
 WizardStyle=modern
-WizardImageFile=compiler:WizModernImage-IS.bmp
-WizardSmallImageFile=compiler:WizModernSmallImage-IS.bmp
+; Note: Using default wizard images (removed custom image references)
 
 ; Icons (uncomment if icon file exists)
 ;SetupIconFile=resources\icon.ico
@@ -73,7 +72,8 @@ ArchitecturesInstallIn64BitMode=x64compatible
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
+Name: "startupicon"; Description: "Launch application at Windows startup"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked; OnlyBelowVersion: 6.1; Check: not IsAdminInstallMode
 
 [Files]
@@ -98,26 +98,73 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 ; Quick Launch icon (if task selected)
 Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: quicklaunchicon
 
+[Dirs]
+; Create application data directories
+Name: "{localappdata}\{#MyAppName}"; Permissions: users-full
+Name: "{localappdata}\{#MyAppName}\database"; Permissions: users-full
+Name: "{localappdata}\{#MyAppName}\logs"; Permissions: users-full
+Name: "{localappdata}\{#MyAppName}\exports"; Permissions: users-full
+Name: "{localappdata}\{#MyAppName}\backups"; Permissions: users-full
+Name: "{commondocs}\{#MyAppName}"; Permissions: users-full
+Name: "{commondocs}\{#MyAppName}\Reports"; Permissions: users-full
+
 [Run]
 ; Launch application after installation
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
-// Custom installation logic (optional)
+// Custom installation logic
+
+var
+  DataDirPage: TInputDirWizardPage;
 
 function InitializeSetup(): Boolean;
 begin
   Result := True;
-  // Add custom initialization here if needed
+  // Check for required dependencies (if any)
+  // Example: Check if Visual C++ Redistributable is installed
+end;
+
+procedure InitializeWizard;
+begin
+  // Create custom page for data directory selection (optional)
+  DataDirPage := CreateInputDirPage(wpSelectDir,
+    'Select Data Directory', 'Where should application data be stored?',
+    'The application will store its database, logs, and exports in this location.' + #13#10#13#10 +
+    'By default, it uses the Windows standard application data folder.',
+    False, '');
+  DataDirPage.Add('');
+  DataDirPage.Values[0] := ExpandConstant('{localappdata}\{#MyAppName}');
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
+var
+  DataDir: String;
 begin
   if CurStep = ssPostInstall then
   begin
-    // Add post-installation tasks here
-    // Example: Create data directories, set permissions, etc.
+    // Get the data directory (use custom or default)
+    DataDir := DataDirPage.Values[0];
+    
+    // Create subdirectories if they don't exist
+    ForceDirectories(DataDir + '\database');
+    ForceDirectories(DataDir + '\logs');
+    ForceDirectories(DataDir + '\exports');
+    ForceDirectories(DataDir + '\backups');
+    
+    // Create a configuration file with the data directory path
+    SaveStringToFile(ExpandConstant('{app}\data_path.txt'), DataDir, False);
+    
+    // Log installation
+    Log('Installation completed successfully');
+    Log('Data directory: ' + DataDir);
   end;
+end;
+
+function GetDataDir(Param: String): String;
+begin
+  // Return the data directory for use in other sections
+  Result := DataDirPage.Values[0];
 end;
 
 [UninstallDelete]
@@ -133,5 +180,10 @@ FinishedLabelNoIcons=Setup has finished installing [name] on your computer.
 FinishedLabel=Setup has finished installing [name] on your computer. The application may be launched by selecting the installed shortcuts.
 
 [Registry]
-; Add to Windows startup (optional - uncomment if needed)
-;Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#MyAppName}"; ValueData: "{app}\{#MyAppExeName}"; Flags: uninsdeletevalue
+; Add to Windows startup (if task selected)
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#MyAppName}"; ValueData: "{app}\{#MyAppExeName}"; Flags: uninsdeletevalue; Tasks: startupicon
+
+; Save installation path for application
+Root: HKCU; Subkey: "Software\{#MyAppPublisher}\{#MyAppName}"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\{#MyAppPublisher}\{#MyAppName}"; ValueType: string; ValueName: "DataPath"; ValueData: "{code:GetDataDir}"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\{#MyAppPublisher}\{#MyAppName}"; ValueType: string; ValueName: "Version"; ValueData: "{#MyAppVersion}"; Flags: uninsdeletekey

@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QLabel,
     QMessageBox,
+    QCompleter,
 )
 from PyQt6.QtCore import Qt
 
@@ -62,16 +63,16 @@ class CouponDialog(QDialog):
         self.coupon_ref_input.setPlaceholderText("Enter coupon reference (e.g., CPN-001)")
         form_layout.addRow("Coupon Ref: *", self.coupon_ref_input)
         
-        # Patient Name
+        # Patient Name (now optional)
         self.patient_name_input = QLineEdit()
-        self.patient_name_input.setPlaceholderText("Enter patient full name")
-        form_layout.addRow("Patient Name: *", self.patient_name_input)
+        self.patient_name_input.setPlaceholderText("Enter patient full name (optional)")
+        form_layout.addRow("Patient Name:", self.patient_name_input)
         
-        # CPR (Civil Personal Record)
+        # CPR (Civil Personal Record - now optional)
         self.cpr_input = QLineEdit()
-        self.cpr_input.setPlaceholderText("Enter CPR number (e.g., 123456789)")
+        self.cpr_input.setPlaceholderText("Enter CPR number (optional, e.g., 123456789)")
         self.cpr_input.setMaxLength(15)
-        form_layout.addRow("CPR: *", self.cpr_input)
+        form_layout.addRow("CPR:", self.cpr_input)
         
         # Product Selection
         self.product_combo = QComboBox()
@@ -91,13 +92,61 @@ class CouponDialog(QDialog):
         self.quantity_input.setSuffix(" pieces")
         form_layout.addRow("Quantity: *", self.quantity_input)
         
-        # Medical Centre
+        # Medical Centre with searchable dropdown and quick-add
+        medical_centre_layout = QHBoxLayout()
         self.medical_centre_combo = QComboBox()
-        form_layout.addRow("Medical Centre: *", self.medical_centre_combo)
+        self.medical_centre_combo.setEditable(True)
+        self.medical_centre_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        medical_centre_layout.addWidget(self.medical_centre_combo, 1)
         
-        # Distribution Location
+        add_centre_btn = QPushButton("➕")
+        add_centre_btn.setMaximumWidth(35)
+        add_centre_btn.setToolTip("Quick add new medical centre")
+        add_centre_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                background-color: #218838;
+            }
+        """)
+        add_centre_btn.clicked.connect(self.quick_add_medical_centre)
+        medical_centre_layout.addWidget(add_centre_btn)
+        
+        form_layout.addRow("Medical Centre: *", medical_centre_layout)
+        
+        # Distribution Location with searchable dropdown and quick-add
+        distribution_layout = QHBoxLayout()
         self.distribution_location_combo = QComboBox()
-        form_layout.addRow("Distribution: *", self.distribution_location_combo)
+        self.distribution_location_combo.setEditable(True)
+        self.distribution_location_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        distribution_layout.addWidget(self.distribution_location_combo, 1)
+        
+        add_location_btn = QPushButton("➕")
+        add_location_btn.setMaximumWidth(35)
+        add_location_btn.setToolTip("Quick add new distribution location")
+        add_location_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                font-weight: bold;
+                border: none;
+                border-radius: 4px;
+                padding: 5px;
+            }
+            QPushButton:hover {
+                background-color: #218838;
+            }
+        """)
+        add_location_btn.clicked.connect(self.quick_add_distribution_location)
+        distribution_layout.addWidget(add_location_btn)
+        
+        form_layout.addRow("Distribution: *", distribution_layout)
         
         layout.addLayout(form_layout)
         
@@ -111,7 +160,7 @@ class CouponDialog(QDialog):
         layout.addWidget(self.stock_info_label)
         
         # Required fields note
-        note = QLabel("* Required fields")
+        note = QLabel("* Required fields | Patient info is optional for bulk entry")
         note.setStyleSheet("color: #7f8c8d; font-size: 11px; font-style: italic;")
         layout.addWidget(note)
         
@@ -156,19 +205,37 @@ class CouponDialog(QDialog):
             for product in self.products:
                 self.product_combo.addItem(f"{product.name}", product.id)
             
-            # Load medical centres
+            # Load medical centres with autocomplete
             self.medical_centres = self.db_manager.get_all(MedicalCentre)
             self.medical_centre_combo.clear()
             self.medical_centre_combo.addItem("-- Select Medical Centre --", None)
+            centre_names = []
             for centre in self.medical_centres:
                 self.medical_centre_combo.addItem(centre.name, centre.id)
+                centre_names.append(centre.name)
             
-            # Load distribution locations
+            # Setup autocomplete for medical centres
+            if centre_names:
+                centre_completer = QCompleter(centre_names, self)
+                centre_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+                centre_completer.setFilterMode(Qt.MatchFlag.MatchContains)
+                self.medical_centre_combo.setCompleter(centre_completer)
+            
+            # Load distribution locations with autocomplete
             self.distribution_locations = self.db_manager.get_all(DistributionLocation)
             self.distribution_location_combo.clear()
             self.distribution_location_combo.addItem("-- Select Distribution Location --", None)
+            location_names = []
             for location in self.distribution_locations:
                 self.distribution_location_combo.addItem(location.name, location.id)
+                location_names.append(location.name)
+            
+            # Setup autocomplete for distribution locations
+            if location_names:
+                location_completer = QCompleter(location_names, self)
+                location_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+                location_completer.setFilterMode(Qt.MatchFlag.MatchContains)
+                self.distribution_location_combo.setCompleter(location_completer)
             
             if not self.products:
                 QMessageBox.warning(
@@ -243,8 +310,13 @@ class CouponDialog(QDialog):
         """Populate form fields with existing coupon data."""
         if self.coupon:
             self.coupon_ref_input.setText(self.coupon.coupon_reference)
-            self.patient_name_input.setText(self.coupon.patient_name)
-            self.cpr_input.setText(self.coupon.cpr)
+            
+            # Handle optional patient fields
+            if self.coupon.patient_name:
+                self.patient_name_input.setText(self.coupon.patient_name)
+            
+            if self.coupon.cpr:
+                self.cpr_input.setText(self.coupon.cpr)
             
             # Select product
             for i in range(self.product_combo.count()):
@@ -281,15 +353,17 @@ class CouponDialog(QDialog):
         distribution_location_id = self.distribution_location_combo.currentData()
         quantity = self.quantity_input.value()
         
-        # Validate patient name
-        is_valid, error_msg = validate_name(patient_name, field_name="Patient name")
-        if not is_valid:
-            return False, error_msg
+        # Validate patient name (optional)
+        if patient_name:
+            is_valid, error_msg = validate_name(patient_name, field_name="Patient name")
+            if not is_valid:
+                return False, error_msg
         
-        # Validate CPR
-        is_valid, error_msg = validate_cpr(cpr)
-        if not is_valid:
-            return False, f"CPR error: {error_msg}"
+        # Validate CPR (optional)
+        if cpr:
+            is_valid, error_msg = validate_cpr(cpr)
+            if not is_valid:
+                return False, f"CPR error: {error_msg}"
         
         # Validate product selection
         if not product_id:
@@ -321,8 +395,8 @@ class CouponDialog(QDialog):
         try:
             # Sanitize inputs
             coupon_reference = sanitize_input(self.coupon_ref_input.text()).upper()
-            patient_name = sanitize_input(self.patient_name_input.text())
-            cpr = sanitize_input(self.cpr_input.text())
+            patient_name = sanitize_input(self.patient_name_input.text()) if self.patient_name_input.text().strip() else None
+            cpr = sanitize_input(self.cpr_input.text()) if self.cpr_input.text().strip() else None
             product_id = self.product_combo.currentData()
             quantity = self.quantity_input.value()
             medical_centre_id = self.medical_centre_combo.currentData()
@@ -345,10 +419,11 @@ class CouponDialog(QDialog):
                 
                 self.db_manager.update(self.coupon)
                 
+                patient_info = f"for {patient_name}" if patient_name else ""
                 QMessageBox.information(
                     self,
                     "Success",
-                    f"Coupon {coupon_reference} for {patient_name} updated successfully!"
+                    f"Coupon {coupon_reference} {patient_info} updated successfully!"
                 )
             else:
                 # Create new coupon
@@ -364,10 +439,12 @@ class CouponDialog(QDialog):
                 )
                 self.db_manager.add(new_coupon)
                 
+                patient_info = f"for {patient_name}" if patient_name else "(no patient info)"
                 QMessageBox.information(
                     self,
                     "Success",
-                    f"Coupon for {patient_name} added successfully!\n"
+                    f"Coupon {patient_info} added successfully!\n"
+                    f"Coupon Ref: {coupon_reference}\n"
                     f"Quantity: {quantity} pieces\n"
                     f"Status: Pending verification"
                 )
@@ -380,3 +457,255 @@ class CouponDialog(QDialog):
                 "Error Saving Coupon",
                 f"Failed to save coupon:\n{str(e)}"
             )
+    
+    def quick_add_medical_centre(self):
+        """Quick add a new medical centre with full form."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Add Medical Centre")
+        dialog.setMinimumWidth(500)
+        
+        layout = QVBoxLayout(dialog)
+        
+        # Title
+        title = QLabel("➕ Add New Medical Centre")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; color: #2c3e50; margin-bottom: 10px;")
+        layout.addWidget(title)
+        
+        # Form
+        form_layout = QFormLayout()
+        
+        name_input = QLineEdit()
+        name_input.setPlaceholderText("Enter medical centre name")
+        form_layout.addRow("Name: *", name_input)
+        
+        reference_input = QLineEdit()
+        reference_input.setPlaceholderText("Enter reference code (e.g., MC-001)")
+        form_layout.addRow("Reference: *", reference_input)
+        
+        address_input = QLineEdit()
+        address_input.setPlaceholderText("Enter address (optional)")
+        form_layout.addRow("Address:", address_input)
+        
+        contact_input = QLineEdit()
+        contact_input.setPlaceholderText("Enter contact person name (optional)")
+        form_layout.addRow("Contact Person:", contact_input)
+        
+        phone_input = QLineEdit()
+        phone_input.setPlaceholderText("Enter phone number (optional)")
+        form_layout.addRow("Phone:", phone_input)
+        
+        layout.addLayout(form_layout)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        save_btn = QPushButton("💾 Save")
+        save_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #007bff;
+                color: white;
+                padding: 8px 16px;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #0056b3;
+            }
+        """)
+        cancel_btn = QPushButton("❌ Cancel")
+        cancel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #6c757d;
+                color: white;
+                padding: 8px 16px;
+                border: none;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #5a6268;
+            }
+        """)
+        
+        button_layout.addWidget(save_btn)
+        button_layout.addWidget(cancel_btn)
+        layout.addLayout(button_layout)
+        
+        def save_centre():
+            name = sanitize_input(name_input.text().strip())
+            reference = sanitize_input(reference_input.text().strip().upper())
+            address = sanitize_input(address_input.text().strip()) or None
+            contact = sanitize_input(contact_input.text().strip()) or None
+            phone = sanitize_input(phone_input.text().strip()) or None
+            
+            # Validation
+            if not name:
+                QMessageBox.warning(dialog, "Validation Error", "Name cannot be empty.")
+                return
+            if not reference:
+                QMessageBox.warning(dialog, "Validation Error", "Reference cannot be empty.")
+                return
+            
+            try:
+                # Check if already exists
+                existing = self.db_manager.get_all(MedicalCentre)
+                if any(c.name.lower() == name.lower() for c in existing):
+                    QMessageBox.warning(dialog, "Duplicate", f"Medical centre '{name}' already exists.")
+                    return
+                if any(c.reference.upper() == reference.upper() for c in existing):
+                    QMessageBox.warning(dialog, "Duplicate", f"Reference '{reference}' already exists.")
+                    return
+                
+                # Create new medical centre
+                new_centre = MedicalCentre(
+                    name=name,
+                    reference=reference,
+                    address=address,
+                    contact_person=contact,
+                    phone=phone
+                )
+                self.db_manager.add(new_centre)
+                
+                # Reload dropdown
+                self.load_dropdown_data()
+                
+                # Select the newly added centre
+                index = self.medical_centre_combo.findText(name)
+                if index >= 0:
+                    self.medical_centre_combo.setCurrentIndex(index)
+                
+                QMessageBox.information(dialog, "Success", f"Medical centre '{name}' added successfully!")
+                dialog.accept()
+                
+            except Exception as e:
+                QMessageBox.critical(dialog, "Error", f"Failed to add medical centre:\n{str(e)}")
+        
+        save_btn.clicked.connect(save_centre)
+        cancel_btn.clicked.connect(dialog.reject)
+        
+        dialog.exec()
+    
+    def quick_add_distribution_location(self):
+        """Quick add a new distribution location with full form."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Add Distribution Location")
+        dialog.setMinimumWidth(500)
+        
+        layout = QVBoxLayout(dialog)
+        
+        # Title
+        title = QLabel("➕ Add New Distribution Location")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; color: #2c3e50; margin-bottom: 10px;")
+        layout.addWidget(title)
+        
+        # Form
+        form_layout = QFormLayout()
+        
+        name_input = QLineEdit()
+        name_input.setPlaceholderText("Enter distribution location name")
+        form_layout.addRow("Name: *", name_input)
+        
+        reference_input = QLineEdit()
+        reference_input.setPlaceholderText("Enter reference code (e.g., DL-001)")
+        form_layout.addRow("Reference: *", reference_input)
+        
+        address_input = QLineEdit()
+        address_input.setPlaceholderText("Enter address (optional)")
+        form_layout.addRow("Address:", address_input)
+        
+        contact_input = QLineEdit()
+        contact_input.setPlaceholderText("Enter contact person name (optional)")
+        form_layout.addRow("Contact Person:", contact_input)
+        
+        phone_input = QLineEdit()
+        phone_input.setPlaceholderText("Enter phone number (optional)")
+        form_layout.addRow("Phone:", phone_input)
+        
+        layout.addLayout(form_layout)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        save_btn = QPushButton("💾 Save")
+        save_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #007bff;
+                color: white;
+                padding: 8px 16px;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #0056b3;
+            }
+        """)
+        cancel_btn = QPushButton("❌ Cancel")
+        cancel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #6c757d;
+                color: white;
+                padding: 8px 16px;
+                border: none;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #5a6268;
+            }
+        """)
+        
+        button_layout.addWidget(save_btn)
+        button_layout.addWidget(cancel_btn)
+        layout.addLayout(button_layout)
+        
+        def save_location():
+            name = sanitize_input(name_input.text().strip())
+            reference = sanitize_input(reference_input.text().strip().upper())
+            address = sanitize_input(address_input.text().strip()) or None
+            contact = sanitize_input(contact_input.text().strip()) or None
+            phone = sanitize_input(phone_input.text().strip()) or None
+            
+            # Validation
+            if not name:
+                QMessageBox.warning(dialog, "Validation Error", "Name cannot be empty.")
+                return
+            if not reference:
+                QMessageBox.warning(dialog, "Validation Error", "Reference cannot be empty.")
+                return
+            
+            try:
+                # Check if already exists
+                existing = self.db_manager.get_all(DistributionLocation)
+                if any(l.name.lower() == name.lower() for l in existing):
+                    QMessageBox.warning(dialog, "Duplicate", f"Distribution location '{name}' already exists.")
+                    return
+                if any(l.reference.upper() == reference.upper() for l in existing):
+                    QMessageBox.warning(dialog, "Duplicate", f"Reference '{reference}' already exists.")
+                    return
+                
+                # Create new distribution location
+                new_location = DistributionLocation(
+                    name=name,
+                    reference=reference,
+                    address=address,
+                    contact_person=contact,
+                    phone=phone
+                )
+                self.db_manager.add(new_location)
+                
+                # Reload dropdown
+                self.load_dropdown_data()
+                
+                # Select the newly added location
+                index = self.distribution_location_combo.findText(name)
+                if index >= 0:
+                    self.distribution_location_combo.setCurrentIndex(index)
+                
+                QMessageBox.information(dialog, "Success", f"Distribution location '{name}' added successfully!")
+                dialog.accept()
+                
+            except Exception as e:
+                QMessageBox.critical(dialog, "Error", f"Failed to add distribution location:\n{str(e)}")
+        
+        save_btn.clicked.connect(save_location)
+        cancel_btn.clicked.connect(dialog.reject)
+        
+        dialog.exec()

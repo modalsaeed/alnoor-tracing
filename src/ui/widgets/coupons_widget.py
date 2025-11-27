@@ -148,6 +148,12 @@ class CouponsWidget(QWidget):
         add_btn.setStyleSheet(StyleSheets.button_primary(Colors.SUCCESS))
         button_layout.addWidget(add_btn)
         
+        bulk_add_btn = QPushButton("📦 Bulk Add")
+        bulk_add_btn.setToolTip("Add multiple coupons at once")
+        bulk_add_btn.clicked.connect(self.bulk_add_coupons)
+        bulk_add_btn.setStyleSheet(StyleSheets.button_primary(Colors.INFO))
+        button_layout.addWidget(bulk_add_btn)
+        
         verify_btn = QPushButton(f"{IconStyles.VERIFIED} Verify Selected")
         verify_btn.setToolTip("Verify one or more selected coupons (Ctrl+Click for multiple)")
         verify_btn.clicked.connect(self.verify_coupon)
@@ -272,7 +278,11 @@ class CouponsWidget(QWidget):
         for coupon in self.coupons:
             # Search filter
             if search_text:
-                searchable = f"{coupon.patient_name} {coupon.cpr} {coupon.verification_reference or ''}".lower()
+                # Handle None values for optional fields
+                patient_name = coupon.patient_name or ""
+                cpr = coupon.cpr or ""
+                verification_ref = coupon.verification_reference or ""
+                searchable = f"{patient_name} {cpr} {verification_ref}".lower()
                 if search_text not in searchable:
                     continue
             
@@ -320,11 +330,11 @@ class CouponsWidget(QWidget):
             # ID
             self.table.setItem(row, 0, QTableWidgetItem(str(coupon.id)))
             
-            # Patient Name
-            self.table.setItem(row, 1, QTableWidgetItem(coupon.patient_name))
+            # Patient Name (handle None)
+            self.table.setItem(row, 1, QTableWidgetItem(coupon.patient_name or "N/A"))
             
-            # CPR
-            self.table.setItem(row, 2, QTableWidgetItem(coupon.cpr))
+            # CPR (handle None)
+            self.table.setItem(row, 2, QTableWidgetItem(coupon.cpr or "N/A"))
             
             # Product
             product_name = coupon.product.name if coupon.product else "Unknown"
@@ -380,6 +390,14 @@ class CouponsWidget(QWidget):
     def add_coupon(self):
         """Open dialog to add a new coupon."""
         dialog = CouponDialog(self.db_manager, parent=self)
+        if dialog.exec():
+            self.load_coupons()
+    
+    def bulk_add_coupons(self):
+        """Open dialog to add multiple coupons at once."""
+        from src.ui.dialogs.bulk_coupon_dialog import BulkCouponDialog
+        
+        dialog = BulkCouponDialog(self.db_manager, parent=self)
         if dialog.exec():
             self.load_coupons()
     

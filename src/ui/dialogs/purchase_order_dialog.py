@@ -13,12 +13,15 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QTextEdit,
     QSpinBox,
+    QDoubleSpinBox,
     QComboBox,
     QPushButton,
     QLabel,
     QMessageBox,
+    QGroupBox,
 )
 from PyQt6.QtCore import Qt
+from decimal import Decimal
 
 from src.database.db_manager import DatabaseManager
 from src.database.models import PurchaseOrder, Product
@@ -77,6 +80,7 @@ class PurchaseOrderDialog(QDialog):
         self.quantity_input.setRange(1, 1000000)
         self.quantity_input.setValue(100)
         self.quantity_input.setSuffix(" units")
+        self.quantity_input.valueChanged.connect(self.calculate_totals)
         form_layout.addRow("Quantity: *", self.quantity_input)
         
         # Warehouse Location
@@ -85,6 +89,68 @@ class PurchaseOrderDialog(QDialog):
         form_layout.addRow("Warehouse:", self.warehouse_input)
         
         layout.addLayout(form_layout)
+        
+        # Pricing Section (Optional)
+        pricing_group = QGroupBox("💰 Pricing Information (Optional)")
+        pricing_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 1px solid #bdc3c7;
+                border-radius: 5px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+            }
+        """)
+        pricing_layout = QFormLayout()
+        
+        # Unit Price
+        self.unit_price_input = QDoubleSpinBox()
+        self.unit_price_input.setRange(0.000, 999999.999)
+        self.unit_price_input.setDecimals(3)
+        self.unit_price_input.setValue(0.000)
+        self.unit_price_input.setSuffix(" BHD")
+        self.unit_price_input.setSpecialValueText("Not specified")
+        self.unit_price_input.valueChanged.connect(self.calculate_totals)
+        pricing_layout.addRow("Unit Price:", self.unit_price_input)
+        
+        # Tax Rate
+        self.tax_rate_input = QDoubleSpinBox()
+        self.tax_rate_input.setRange(0.00, 100.00)
+        self.tax_rate_input.setDecimals(2)
+        self.tax_rate_input.setValue(0.00)
+        self.tax_rate_input.setSuffix(" %")
+        self.tax_rate_input.setSpecialValueText("No tax")
+        self.tax_rate_input.valueChanged.connect(self.calculate_totals)
+        pricing_layout.addRow("Tax Rate:", self.tax_rate_input)
+        
+        # Calculated fields (read-only)
+        self.total_without_tax_display = QLineEdit()
+        self.total_without_tax_display.setReadOnly(True)
+        self.total_without_tax_display.setStyleSheet("background-color: #f0f0f0; font-weight: bold;")
+        pricing_layout.addRow("Total (Before Tax):", self.total_without_tax_display)
+        
+        self.tax_amount_display = QLineEdit()
+        self.tax_amount_display.setReadOnly(True)
+        self.tax_amount_display.setStyleSheet("background-color: #f0f0f0;")
+        pricing_layout.addRow("Tax Amount:", self.tax_amount_display)
+        
+        self.total_with_tax_display = QLineEdit()
+        self.total_with_tax_display.setReadOnly(True)
+        self.total_with_tax_display.setStyleSheet("background-color: #e8f5e9; font-weight: bold; color: #2e7d32;")
+        pricing_layout.addRow("Total (With Tax):", self.total_with_tax_display)
+        
+        pricing_group.setLayout(pricing_layout)
+        layout.addWidget(pricing_group)
+        
+        # Note about optional pricing
+        pricing_note = QLabel("💡 Pricing information is optional and can be added later")
+        pricing_note.setStyleSheet("color: #7f8c8d; font-size: 11px; font-style: italic; margin-top: 5px;")
+        layout.addWidget(pricing_note)
         
         # Stock info (for edit mode)
         if self.is_edit_mode:
@@ -170,6 +236,36 @@ class PurchaseOrderDialog(QDialog):
         else:
             self.product_desc_display.clear()
     
+    def calculate_totals(self):
+        """Calculate pricing totals based on quantity, unit price, and tax rate."""
+        try:
+            quantity = self.quantity_input.value()
+            unit_price = self.unit_price_input.value()
+            tax_rate = self.tax_rate_input.value()
+            
+            # Calculate total without tax
+            total_without_tax = quantity * unit_price
+            
+            # Calculate tax amount
+            tax_amount = total_without_tax * (tax_rate / 100.0)
+            
+            # Calculate total with tax
+            total_with_tax = total_without_tax + tax_amount
+            
+            # Update display fields
+            if unit_price > 0:
+                self.total_without_tax_display.setText(f"{total_without_tax:.3f} BHD")
+                self.tax_amount_display.setText(f"{tax_amount:.3f} BHD")
+                self.total_with_tax_display.setText(f"{total_with_tax:.3f} BHD")
+            else:
+                self.total_without_tax_display.setText("0.000 BHD")
+                self.tax_amount_display.setText("0.000 BHD")
+                self.total_with_tax_display.setText("0.000 BHD")
+                
+        except Exception as e:
+            # Silently handle calculation errors
+            pass
+    
     def populate_fields(self):
         """Populate form fields with existing order data."""
         if self.order:
@@ -186,6 +282,16 @@ class PurchaseOrderDialog(QDialog):
             if self.order.warehouse_location:
                 self.warehouse_input.setText(self.order.warehouse_location)
             
+            # Populate pricing fields if available
+            if self.order.unit_price is not None:
+                self.unit_price_input.setValue(float(self.order.unit_price))
+            
+            if self.order.tax_rate is not None:
+                self.tax_rate_input.setValue(float(self.order.tax_rate))
+            
+            # Calculate totals will auto-populate the calculated fields
+            self.calculate_totals()
+            
             # Update stock info
             used = self.order.quantity - self.order.remaining_stock
             self.stock_info_label.setText(
@@ -201,7 +307,7 @@ class PurchaseOrderDialog(QDialog):
                     self,
                     "Limited Editing",
                     "Product and quantity cannot be changed because stock has been used.\n"
-                    "You can only update PO reference and warehouse location."
+                    "You can only update PO reference, warehouse location, and pricing information."
                 )
     
     def validate_input(self) -> tuple[bool, str]:
@@ -266,16 +372,51 @@ class PurchaseOrderDialog(QDialog):
             quantity = self.quantity_input.value()
             warehouse = sanitize_input(self.warehouse_input.text())
             
+            # Get pricing values (optional)
+            unit_price = self.unit_price_input.value() if self.unit_price_input.value() > 0 else None
+            tax_rate = self.tax_rate_input.value() if self.tax_rate_input.value() > 0 else None
+            
+            # Calculate pricing fields
+            tax_amount = None
+            total_without_tax = None
+            total_with_tax = None
+            
+            if unit_price is not None:
+                total_without_tax = quantity * unit_price
+                if tax_rate is not None:
+                    tax_amount = total_without_tax * (tax_rate / 100.0)
+                    total_with_tax = total_without_tax + tax_amount
+                else:
+                    total_with_tax = total_without_tax
+            
             if self.is_edit_mode:
                 # Update existing order
                 self.order.po_reference = po_reference
                 self.order.warehouse_location = warehouse if warehouse else None
+                
+                # Update pricing information
+                self.order.unit_price = unit_price
+                self.order.tax_rate = tax_rate
+                self.order.tax_amount = tax_amount
+                self.order.total_without_tax = total_without_tax
+                self.order.total_with_tax = total_with_tax
                 
                 # Only update product and quantity if no stock has been used
                 if self.order.remaining_stock == self.order.quantity:
                     self.order.product_id = product_id
                     self.order.quantity = quantity
                     self.order.remaining_stock = quantity
+                    # Recalculate totals if quantity changed
+                    if unit_price is not None:
+                        total_without_tax = quantity * unit_price
+                        if tax_rate is not None:
+                            tax_amount = total_without_tax * (tax_rate / 100.0)
+                            total_with_tax = total_without_tax + tax_amount
+                        else:
+                            total_with_tax = total_without_tax
+                        self.order.tax_amount = tax_amount
+                        self.order.total_without_tax = total_without_tax
+                        self.order.total_with_tax = total_with_tax
                 
                 self.db_manager.update(self.order)
                 
@@ -291,15 +432,24 @@ class PurchaseOrderDialog(QDialog):
                     product_id=product_id,
                     quantity=quantity,
                     remaining_stock=quantity,  # Initially, remaining = quantity
-                    warehouse_location=warehouse if warehouse else None
+                    warehouse_location=warehouse if warehouse else None,
+                    unit_price=unit_price,
+                    tax_rate=tax_rate,
+                    tax_amount=tax_amount,
+                    total_without_tax=total_without_tax,
+                    total_with_tax=total_with_tax
                 )
                 self.db_manager.add(new_order)
+                
+                pricing_info = ""
+                if total_with_tax is not None:
+                    pricing_info = f"\nTotal cost: {total_with_tax:.3f} BHD"
                 
                 QMessageBox.information(
                     self,
                     "Success",
                     f"Purchase order '{po_reference}' added successfully!\n"
-                    f"Initial stock: {quantity} units"
+                    f"Initial stock: {quantity} units{pricing_info}"
                 )
             
             self.accept()

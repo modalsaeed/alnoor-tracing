@@ -64,12 +64,19 @@ htmlcov/
 
 # PyInstaller
 *.manifest
-*.spec
 build/
 dist/
+*.spec.bak
+
+# Installer output
+installer/*.exe
+installer/*.msi
+Output/
+*.iss.bak
 
 # Logs
 *.log
+logs/
 
 # Environment variables
 .env
@@ -79,3 +86,14 @@ dist/
 *.tmp
 *.temp
 ~$*
+
+# OS specific
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Application data (user generated)
+data/alnoor.db
+data/alnoor_backup_*.db
+!data/.gitkeep
+*.md

@@ -6,6 +6,7 @@ and provides helper methods for common database operations.
 """
 
 import os
+import sys
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -23,6 +24,7 @@ from .models import (
     DistributionLocation,
     MedicalCentre,
     PatientCoupon,
+    Transaction,
     ActivityLog,
 )
 
@@ -56,10 +58,28 @@ class DatabaseManager:
             return  # Already initialized
         
         if db_path is None:
-            # Default: data/alnoor.db in project root
-            project_root = Path(__file__).parent.parent.parent
-            data_dir = project_root / 'data'
-            data_dir.mkdir(exist_ok=True)
+            # Determine if running as frozen executable (PyInstaller) or as script
+            if getattr(sys, 'frozen', False):
+                # Running as compiled executable
+                # Use user's AppData directory for database
+                app_name = 'Alnoor Medical Services'
+                if sys.platform == 'win32':
+                    # Windows: Use LOCALAPPDATA
+                    app_data = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
+                    data_dir = app_data / app_name / 'database'
+                elif sys.platform == 'darwin':
+                    # macOS: Use ~/Library/Application Support
+                    data_dir = Path.home() / 'Library' / 'Application Support' / app_name / 'database'
+                else:
+                    # Linux: Use ~/.local/share
+                    data_dir = Path.home() / '.local' / 'share' / app_name / 'database'
+            else:
+                # Running as script in development
+                # Use data/ folder in project root
+                project_root = Path(__file__).parent.parent.parent
+                data_dir = project_root / 'data'
+            
+            data_dir.mkdir(parents=True, exist_ok=True)
             db_path = str(data_dir / 'alnoor.db')
         
         self.db_path = db_path
@@ -94,7 +114,7 @@ class DatabaseManager:
         Base.metadata.create_all(self._engine)
     
     @contextmanager
-    def get_session(self) -> Session:
+    def get_session(self):
         """
         Context manager for database sessions.
         
@@ -293,6 +313,7 @@ class DatabaseManager:
                 'medical_centres_count': session.query(MedicalCentre).count(),
                 'coupons_count': session.query(PatientCoupon).count(),
                 'verified_coupons_count': session.query(PatientCoupon).filter(PatientCoupon.verified == True).count(),
+                'transactions_count': session.query(Transaction).count(),
                 'activity_logs_count': session.query(ActivityLog).count(),
             }
         return info

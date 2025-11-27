@@ -7,6 +7,7 @@ from .models import (
     DistributionLocation,
     MedicalCentre,
     PatientCoupon,
+    Transaction,
     ActivityLog,
 )
 from .db_manager import DatabaseManager, get_db_manager
@@ -18,6 +19,7 @@ __all__ = [
     'DistributionLocation',
     'MedicalCentre',
     'PatientCoupon',
+    'Transaction',
     'ActivityLog',
     'DatabaseManager',
     'get_db_manager',
