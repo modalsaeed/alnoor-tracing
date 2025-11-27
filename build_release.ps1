@@ -19,21 +19,50 @@
 #   - Inno Setup installed (optional, for installer creation)
 #
 # Usage:
-#   .\build_release.ps1 [-Version "1.0.1"]
+#   .\build_release.ps1 [-Version "1.0.2"]
+#   .\build_release.ps1 -Version "2.0.0" -Prerelease "beta.1"
+#
+# The script will:
+#   - Build for the specified version
+#   - Create upgrade-aware installer
+#   - Preserve user data during upgrades
+#   - Generate version-specific checksums
 
 param(
-    [string]$Version = "1.0.1"
+    [Parameter(Mandatory=$false)]
+    [string]$Version,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$Prerelease = ""
 )
 
 # ============================================
 # Configuration
 # ============================================
 
+# Auto-detect version from VERSION file or use parameter
+if (-not $Version) {
+    if (Test-Path "VERSION") {
+        $Version = (Get-Content "VERSION" -Raw).Trim()
+        Write-Host "Auto-detected version from VERSION file: $Version" -ForegroundColor Cyan
+    } else {
+        $Version = "1.0.1"
+        Write-Host "No version specified, using default: $Version" -ForegroundColor Yellow
+    }
+}
+
+# Build full version string
+$FullVersion = $Version
+if ($Prerelease) {
+    $FullVersion = "$Version-$Prerelease"
+}
+
 $AppName = "Alnoor Medical Services"
 $ExeName = "AlnoorMedicalServices"
 $Publisher = "Alnoor Medical Services"
 $AppURL = "https://github.com/modalsaeed/alnoor-tracing"
-$ReleaseDir = "release\v$Version"
+$ReleaseDir = "release\v$FullVersion"
+$AppId = "8F4B2C3D-5A6E-4B7C-9D8E-1F2A3B4C5D6E"  # Keep same AppId for upgrades
 
 # Colors for output
 $ColorInfo = "Cyan"
@@ -289,19 +318,22 @@ if (-not (Test-Path $innoSetupPath)) {
     
     $installerCreated = $false
 } else {
-    # Create Inno Setup script
+    # Create Inno Setup script with upgrade support
     $issContent = @"
 ; Alnoor Medical Services Installer Script
 ; Generated automatically by build_release.ps1
+; Version: $FullVersion
 
 #define MyAppName "$AppName"
 #define MyAppVersion "$Version"
 #define MyAppPublisher "$Publisher"
 #define MyAppURL "$AppURL"
 #define MyAppExeName "$ExeName.exe"
+#define MyAppId "$AppId"
 
 [Setup]
-AppId={{8F4B2C3D-5A6E-4B7C-9D8E-1F2A3B4C5D6E}
+; IMPORTANT: Keep AppId the same across versions for proper upgrades
+AppId={{$AppId}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
@@ -310,15 +342,27 @@ AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
+DisableProgramGroupPage=yes
 AllowNoIcons=yes
 LicenseFile=LICENSE
 OutputDir=$ReleaseDir
-OutputBaseFilename=AlnoorMedicalServices-Setup-v$Version
+OutputBaseFilename=AlnoorMedicalServices-Setup-v$FullVersion
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+PrivilegesRequired=admin
+UninstallDisplayIcon={app}\{#MyAppExeName}
+; Version info for Windows
+VersionInfoVersion=$Version.0
+VersionInfoCompany={#MyAppPublisher}
+VersionInfoDescription={#MyAppName} Installer
+VersionInfoCopyright=Copyright (C) $(Get-Date -Format yyyy) {#MyAppPublisher}
+; Upgrade settings
+; CloseApplications will try to close the app before upgrade
+CloseApplications=yes
+RestartApplications=no
 PrivilegesRequired=admin
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
@@ -343,15 +387,104 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+var
+  OldVersion: String;
+  IsUpgrade: Boolean;
+
+function InitializeSetup(): Boolean;
+begin
+  // Check if an older version is installed
+  IsUpgrade := RegQueryStringValue(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#MyAppId}_is1', 'DisplayVersion', OldVersion);
+  
+  if IsUpgrade then
+  begin
+    Log('Detected existing installation: ' + OldVersion);
+    if MsgBox('Version ' + OldVersion + ' is currently installed.' + #13#10#13#10 +
+              'This will upgrade to version {#MyAppVersion}.' + #13#10#13#10 +
+              'Your database and settings will be preserved.' + #13#10#13#10 +
+              'Do you want to continue?', 
+              mbConfirmation, MB_YESNO) = IDYES then
+      Result := True
+    else
+      Result := False;
+  end
+  else
+  begin
+    Log('Clean installation detected');
+    Result := True;
+  end;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   AppDataDir: String;
+  DatabasePath: String;
+  BackupPath: String;
 begin
+  if CurStep = ssInstall then
+  begin
+    // Before installation, create backup of user database if upgrading
+    if IsUpgrade then
+    begin
+      AppDataDir := ExpandConstant('{localappdata}\{#MyAppName}\database');
+      DatabasePath := AppDataDir + '\alnoor.db';
+      
+      if FileExists(DatabasePath) then
+      begin
+        BackupPath := AppDataDir + '\alnoor_backup_' + OldVersion + '_' + GetDateTimeString('yyyymmdd_hhnnss', '-', ':') + '.db';
+        Log('Creating database backup: ' + BackupPath);
+        
+        if FileCopy(DatabasePath, BackupPath, False) then
+          Log('Backup created successfully')
+        else
+          Log('Warning: Failed to create backup');
+      end;
+    end;
+  end;
+  
   if CurStep = ssPostInstall then
   begin
     // Database will be created automatically in:
     // %LOCALAPPDATA%\Alnoor Medical Services\database\alnoor.db
-    // No action needed here
+    // User data is preserved during upgrades
+    
+    if IsUpgrade then
+      Log('Upgrade completed. Database preserved at: ' + ExpandConstant('{localappdata}\{#MyAppName}\database'))
+    else
+      Log('New installation. Database will be created on first run');
+  end;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  AppDataDir: String;
+  DatabasePath: String;
+  Response: Integer;
+begin
+  if CurUninstallStep = usUninstall then
+  begin
+    // Ask user if they want to keep their data
+    AppDataDir := ExpandConstant('{localappdata}\{#MyAppName}');
+    DatabasePath := AppDataDir + '\database\alnoor.db';
+    
+    if FileExists(DatabasePath) then
+    begin
+      Response := MsgBox('Do you want to keep your database and settings?' + #13#10#13#10 +
+                        'Choose YES to keep your data for future reinstallation.' + #13#10 +
+                        'Choose NO to completely remove all data.',
+                        mbConfirmation, MB_YESNO);
+      
+      if Response = IDNO then
+      begin
+        Log('User chose to delete data');
+        if DelTree(AppDataDir, True, True, True) then
+          Log('User data deleted successfully')
+        else
+          Log('Warning: Failed to delete some user data');
+      end
+      else
+        Log('User data preserved at: ' + AppDataDir);
+    end;
   end;
 end;
 "@
