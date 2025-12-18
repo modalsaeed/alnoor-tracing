@@ -5,6 +5,7 @@ Provides a form for creating new coupons or editing pending ones.
 """
 
 from typing import Optional
+from datetime import datetime
 from PyQt6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -17,8 +18,9 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMessageBox,
     QCompleter,
+    QDateEdit,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QDate
 
 from src.database.db_manager import DatabaseManager
 from src.database.models import PatientCoupon, Product, MedicalCentre, DistributionLocation
@@ -74,6 +76,13 @@ class CouponDialog(QDialog):
         self.cpr_input.setMaxLength(15)
         form_layout.addRow("CPR:", self.cpr_input)
         
+        # Date Received
+        self.date_received_input = QDateEdit()
+        self.date_received_input.setCalendarPopup(True)
+        self.date_received_input.setDate(QDate.currentDate())
+        self.date_received_input.setDisplayFormat("dd/MM/yyyy")
+        form_layout.addRow("Date Received: *", self.date_received_input)
+        
         # Product Selection
         self.product_combo = QComboBox()
         self.product_combo.currentIndexChanged.connect(self.on_product_changed)
@@ -92,7 +101,7 @@ class CouponDialog(QDialog):
         self.quantity_input.setSuffix(" pieces")
         form_layout.addRow("Quantity: *", self.quantity_input)
         
-        # Medical Centre with searchable dropdown and quick-add
+        # MOH Health Centre with searchable dropdown and quick-add
         medical_centre_layout = QHBoxLayout()
         self.medical_centre_combo = QComboBox()
         self.medical_centre_combo.setEditable(True)
@@ -101,7 +110,7 @@ class CouponDialog(QDialog):
         
         add_centre_btn = QPushButton("➕")
         add_centre_btn.setMaximumWidth(35)
-        add_centre_btn.setToolTip("Quick add new medical centre")
+        add_centre_btn.setToolTip("Quick add new MOH health centre")
         add_centre_btn.setStyleSheet("""
             QPushButton {
                 background-color: #28a745;
@@ -118,7 +127,7 @@ class CouponDialog(QDialog):
         add_centre_btn.clicked.connect(self.quick_add_medical_centre)
         medical_centre_layout.addWidget(add_centre_btn)
         
-        form_layout.addRow("Medical Centre: *", medical_centre_layout)
+        form_layout.addRow("MOH Health Centre: *", medical_centre_layout)
         
         # Distribution Location with searchable dropdown and quick-add
         distribution_layout = QHBoxLayout()
@@ -208,7 +217,7 @@ class CouponDialog(QDialog):
             # Load medical centres with autocomplete
             self.medical_centres = self.db_manager.get_all(MedicalCentre)
             self.medical_centre_combo.clear()
-            self.medical_centre_combo.addItem("-- Select Medical Centre --", None)
+            self.medical_centre_combo.addItem("-- Select MOH Health Centre --", None)
             centre_names = []
             for centre in self.medical_centres:
                 self.medical_centre_combo.addItem(centre.name, centre.id)
@@ -247,8 +256,8 @@ class CouponDialog(QDialog):
             if not self.medical_centres:
                 QMessageBox.warning(
                     self,
-                    "No Medical Centres",
-                    "No medical centres found.\nPlease add medical centres first."
+                    "No MOH Health Centres",
+                    "No MOH health centres found.\nPlease add MOH health centres first."
                 )
             
             if not self.distribution_locations:
@@ -317,6 +326,15 @@ class CouponDialog(QDialog):
             
             if self.coupon.cpr:
                 self.cpr_input.setText(self.coupon.cpr)
+            
+            # Set date received
+            if self.coupon.date_received:
+                qdate = QDate(
+                    self.coupon.date_received.year,
+                    self.coupon.date_received.month,
+                    self.coupon.date_received.day
+                )
+                self.date_received_input.setDate(qdate)
             
             # Select product
             for i in range(self.product_combo.count()):
@@ -402,6 +420,10 @@ class CouponDialog(QDialog):
             medical_centre_id = self.medical_centre_combo.currentData()
             distribution_location_id = self.distribution_location_combo.currentData()
             
+            # Get selected date
+            selected_date = self.date_received_input.date()
+            date_received = datetime(selected_date.year(), selected_date.month(), selected_date.day())
+            
             # Validate coupon reference is not empty
             if not coupon_reference:
                 QMessageBox.warning(self, "Validation Error", "Coupon reference cannot be empty.")
@@ -416,6 +438,7 @@ class CouponDialog(QDialog):
                 self.coupon.quantity_pieces = quantity
                 self.coupon.medical_centre_id = medical_centre_id
                 self.coupon.distribution_location_id = distribution_location_id
+                self.coupon.date_received = date_received
                 
                 self.db_manager.update(self.coupon)
                 
@@ -435,7 +458,8 @@ class CouponDialog(QDialog):
                     quantity_pieces=quantity,
                     medical_centre_id=medical_centre_id,
                     distribution_location_id=distribution_location_id,
-                    verified=False  # Initially not verified
+                    verified=False,  # Initially not verified
+                    date_received=date_received
                 )
                 self.db_manager.add(new_coupon)
                 
@@ -446,6 +470,7 @@ class CouponDialog(QDialog):
                     f"Coupon {patient_info} added successfully!\n"
                     f"Coupon Ref: {coupon_reference}\n"
                     f"Quantity: {quantity} pieces\n"
+                    f"Date: {selected_date.toString('dd/MM/yyyy')}\n"
                     f"Status: Pending verification"
                 )
             

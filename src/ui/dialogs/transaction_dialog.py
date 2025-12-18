@@ -1,7 +1,7 @@
 """
 Transaction Dialog - Create and view product transfer transactions.
 
-Allows users to record when products are transferred from purchase orders
+Allows users to record when products are transferred from supplier purchases
 to distribution locations, which automatically updates stock levels using FIFO.
 """
 
@@ -15,7 +15,7 @@ from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QFont
 
 from src.database.db_manager import DatabaseManager
-from src.database.models import Product, PurchaseOrder, DistributionLocation
+from src.database.models import Product, Purchase, DistributionLocation
 from src.services.stock_service import StockService
 from src.utils.validators import validate_reference, sanitize_input
 
@@ -46,8 +46,8 @@ class TransactionDialog(QDialog):
         
         # Info message
         info = QLabel(
-            "ℹ️ Record a product transfer from a purchase order to a distribution location.\n"
-            "Stock will be deducted automatically using FIFO (First In, First Out) method."
+            "ℹ️ Record a product transfer from a supplier purchase to a distribution location.\n"
+            "Stock will be deducted automatically from the supplier purchase."
         )
         info.setStyleSheet(
             "background-color: #d1ecf1; padding: 10px; border-radius: 4px; "
@@ -73,10 +73,10 @@ class TransactionDialog(QDialog):
         self.product_combo.currentIndexChanged.connect(self.on_product_changed)
         form_layout.addRow("Product: *", self.product_combo)
         
-        # Purchase Order Selection
-        self.po_combo = QComboBox()
-        self.po_combo.currentIndexChanged.connect(self.on_po_changed)
-        form_layout.addRow("Purchase Order: *", self.po_combo)
+        # Supplier Purchase Selection
+        self.purchase_combo = QComboBox()
+        self.purchase_combo.currentIndexChanged.connect(self.on_purchase_changed)
+        form_layout.addRow("Supplier Purchase: *", self.purchase_combo)
         
         # Distribution Location
         self.location_combo = QComboBox()
@@ -172,65 +172,73 @@ class TransactionDialog(QDialog):
         product_id = self.product_combo.currentData()
         
         if product_id is None:
-            self.po_combo.clear()
-            self.po_combo.addItem("-- Select Product First --", None)
+            self.purchase_combo.clear()
+            self.purchase_combo.addItem("-- Select Product First --", None)
             self.stock_info_label.setText("Select a product to view stock information")
             return
         
-        # Load purchase orders for this product
+        # Load purchases for this product (only with remaining stock)
         with self.db_manager.get_session() as session:
-            pos = session.query(PurchaseOrder).filter(
-                PurchaseOrder.product_id == product_id
-            ).order_by(PurchaseOrder.created_at.desc()).all()
+            purchases = session.query(Purchase).filter(
+                Purchase.product_id == product_id,
+                Purchase.remaining_stock > 0
+            ).order_by(Purchase.purchase_date.desc()).all()
             
-            self.po_combo.clear()
-            self.po_combo.addItem("-- Select Purchase Order --", None)
+            self.purchase_combo.clear()
+            self.purchase_combo.addItem("-- Select Supplier Purchase --", None)
             
-            for po in pos:
-                display_text = f"{po.po_reference} - Stock: {po.remaining_stock}/{po.quantity}"
-                if po.remaining_stock == 0:
-                    display_text += " (Empty)"
-                self.po_combo.addItem(display_text, po.id)
+            for purchase in purchases:
+                supplier = purchase.supplier_name or "Unknown Supplier"
+                display_text = f"{purchase.invoice_number} - {supplier} - Stock: {purchase.remaining_stock}/{purchase.quantity}"
+                self.purchase_combo.addItem(display_text, purchase.id)
         
         # Update stock information
         self.update_stock_info(product_id)
     
-    def on_po_changed(self):
-        """Handle purchase order selection change."""
-        po_id = self.po_combo.currentData()
+    def on_purchase_changed(self):
+        """Handle purchase selection change."""
+        purchase_id = self.purchase_combo.currentData()
         product_id = self.product_combo.currentData()
         
-        if po_id is None or product_id is None:
+        if purchase_id is None or product_id is None:
             return
         
-        # Update stock info when PO changes
-        self.update_stock_info(product_id, po_id)
+        # Update stock info when purchase changes
+        self.update_stock_info(product_id, purchase_id)
     
-    def update_stock_info(self, product_id: int, po_id: int = None):
+    def update_stock_info(self, product_id: int, purchase_id: int = None):
         """Update the stock information display."""
-        total_stock = self.stock_service.get_total_stock_by_product(product_id)
-        
         with self.db_manager.get_session() as session:
             product = session.query(Product).get(product_id)
             
-            info_text = f"<b>{product.name}</b><br><br>"
-            info_text += f"<b>Total Available Stock:</b> {total_stock} pieces<br>"
+            # Calculate total available stock from all purchases
+            total_stock = session.query(Purchase).filter(
+                Purchase.product_id == product_id
+            ).with_entities(
+                Purchase.remaining_stock
+            ).all()
+            total_available = sum(p[0] for p in total_stock)
             
-            # If a specific PO is selected, show its details
-            if po_id:
-                po = session.query(PurchaseOrder).get(po_id)
-                if po:
-                    info_text += f"<br><b>Selected Purchase Order:</b><br>"
-                    info_text += f"  Reference: {po.po_reference}<br>"
-                    info_text += f"  Total Quantity: {po.quantity} pieces<br>"
-                    info_text += f"  Remaining: {po.remaining_stock} pieces<br>"
-                    info_text += f"  Created: {po.created_at.strftime('%d/%m/%Y')}<br>"
+            info_text = f"<b>{product.name}</b><br><br>"
+            info_text += f"<b>Total Available Stock:</b> {total_available} pieces<br>"
+            
+            # If a specific purchase is selected, show its details
+            if purchase_id:
+                purchase = session.query(Purchase).get(purchase_id)
+                if purchase:
+                    info_text += f"<br><b>Selected Supplier Purchase:</b><br>"
+                    info_text += f"  Invoice: {purchase.invoice_number}<br>"
+                    info_text += f"  Supplier: {purchase.supplier_name or 'N/A'}<br>"
+                    info_text += f"  Total Quantity: {purchase.quantity} pieces<br>"
+                    info_text += f"  Remaining: {purchase.remaining_stock} pieces<br>"
+                    info_text += f"  Purchase Date: {purchase.purchase_date.strftime('%d/%m/%Y')}<br>"
+                    info_text += f"  Unit Price: {float(purchase.unit_price):.3f} BHD<br>"
             
             # Show stock status
-            if total_stock == 0:
+            if total_available == 0:
                 info_text += "<br><span style='color: #dc3545; font-weight: bold;'>⚠️ No stock available</span>"
-            elif total_stock < 100:
-                info_text += f"<br><span style='color: #ffc107; font-weight: bold;'>⚠️ Low stock ({total_stock} pieces)</span>"
+            elif total_available < 100:
+                info_text += f"<br><span style='color: #ffc107; font-weight: bold;'>⚠️ Low stock ({total_available} pieces)</span>"
             else:
                 info_text += "<br><span style='color: #28a745; font-weight: bold;'>✅ Stock available</span>"
             
@@ -252,10 +260,10 @@ class TransactionDialog(QDialog):
         if product_id is None:
             return False, "Please select a product"
         
-        # Purchase Order
-        po_id = self.po_combo.currentData()
-        if po_id is None:
-            return False, "Please select a purchase order"
+        # Supplier Purchase
+        purchase_id = self.purchase_combo.currentData()
+        if purchase_id is None:
+            return False, "Please select a supplier purchase"
         
         # Distribution Location
         location_id = self.location_combo.currentData()
@@ -267,15 +275,11 @@ class TransactionDialog(QDialog):
         if quantity <= 0:
             return False, "Quantity must be greater than 0"
         
-        # Validate transaction with stock service
-        is_valid, error_msg = self.stock_service.validate_transaction(
-            product_id=product_id,
-            quantity=quantity,
-            purchase_order_id=po_id
-        )
-        
-        if not is_valid:
-            return False, error_msg
+        # Validate quantity against purchase remaining stock
+        with self.db_manager.get_session() as session:
+            purchase = session.query(Purchase).get(purchase_id)
+            if purchase and quantity > purchase.remaining_stock:
+                return False, f"Quantity ({quantity}) exceeds available stock ({purchase.remaining_stock})"
         
         return True, ""
     
@@ -290,7 +294,7 @@ class TransactionDialog(QDialog):
         # Get values
         reference = sanitize_input(self.reference_input.text().strip())
         product_id = self.product_combo.currentData()
-        po_id = self.po_combo.currentData()
+        purchase_id = self.purchase_combo.currentData()
         location_id = self.location_combo.currentData()
         quantity = self.quantity_input.value()
         
@@ -301,7 +305,7 @@ class TransactionDialog(QDialog):
         # Confirm transaction
         with self.db_manager.get_session() as session:
             product = session.query(Product).get(product_id)
-            po = session.query(PurchaseOrder).get(po_id)
+            purchase = session.query(Purchase).get(purchase_id)
             location = session.query(DistributionLocation).get(location_id)
             
             reply = QMessageBox.question(
@@ -310,11 +314,11 @@ class TransactionDialog(QDialog):
                 f"Create the following transaction?\n\n"
                 f"Reference: {reference}\n"
                 f"Product: {product.name}\n"
-                f"From PO: {po.po_reference}\n"
+                f"From Purchase: {purchase.invoice_number} ({purchase.supplier_name or 'N/A'})\n"
                 f"To Location: {location.name}\n"
                 f"Quantity: {quantity} pieces\n"
                 f"Date: {transaction_date.strftime('%d/%m/%Y')}\n\n"
-                f"Stock will be deducted using FIFO method.\n"
+                f"Stock will be deducted from the supplier purchase.\n"
                 f"This action cannot be undone.",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No
@@ -323,29 +327,51 @@ class TransactionDialog(QDialog):
             if reply == QMessageBox.StandardButton.No:
                 return
         
-        # Create transaction using stock service
-        success, message, transaction = self.stock_service.create_transaction(
-            transaction_reference=reference,
-            purchase_order_id=po_id,
-            product_id=product_id,
-            distribution_location_id=location_id,
-            quantity=quantity,
-            transaction_date=transaction_date
-        )
+        # Create transaction directly (no stock service needed now)
+        from src.database.models import Transaction
         
-        if success:
-            QMessageBox.information(
-                self,
-                "Transaction Created",
-                f"✅ {message}\n\n"
-                f"Transaction Reference: {reference}\n"
-                f"Transaction ID: {transaction.id}\n\n"
-                f"Stock has been deducted from purchase orders using FIFO."
-            )
-            self.accept()
-        else:
+        try:
+            with self.db_manager.get_session() as session:
+                # Get purchase and validate stock
+                purchase = session.query(Purchase).get(purchase_id)
+                if purchase.remaining_stock < quantity:
+                    QMessageBox.critical(
+                        self,
+                        "Insufficient Stock",
+                        f"Purchase only has {purchase.remaining_stock} pieces remaining."
+                    )
+                    return
+                
+                # Create transaction
+                transaction = Transaction(
+                    transaction_reference=reference,
+                    purchase_id=purchase_id,
+                    product_id=product_id,
+                    distribution_location_id=location_id,
+                    quantity=quantity,
+                    transaction_date=transaction_date
+                )
+                
+                # Reduce purchase stock
+                purchase.remaining_stock -= quantity
+                
+                session.add(transaction)
+                session.commit()
+                
+                QMessageBox.information(
+                    self,
+                    "Transaction Created",
+                    f"✅ Transaction created successfully!\n\n"
+                    f"Transaction Reference: {reference}\n"
+                    f"Transaction ID: {transaction.id}\n\n"
+                    f"Stock has been updated."
+                )
+                self.accept()
+            
+        except Exception as e:
             QMessageBox.critical(
                 self,
-                "Transaction Failed",
-                f"❌ Failed to create transaction:\n\n{message}"
+                "Error",
+                f"Failed to create transaction:\n{str(e)}"
             )
+

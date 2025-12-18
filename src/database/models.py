@@ -33,6 +33,7 @@ class Product(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False)
     reference = Column(String(100), unique=True, nullable=False, index=True)
+    unit = Column(String(50), nullable=True)  # e.g., "ctn", "box", "pcs", "kg"
     description = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -41,7 +42,7 @@ class Product(Base):
     purchase_orders = relationship('PurchaseOrder', back_populates='product', cascade='all, delete-orphan')
     
     def __repr__(self):
-        return f"<Product(id={self.id}, name='{self.name}', reference='{self.reference}')>"
+        return f"<Product(id={self.id}, name='{self.name}', reference='{self.reference}', unit='{self.unit}')>"
     
     @validates('reference')
     def validate_reference(self, key, value):
@@ -75,7 +76,8 @@ class PurchaseOrder(Base):
     
     # Relationships
     product = relationship('Product', back_populates='purchase_orders')
-    transactions = relationship('Transaction', back_populates='purchase_order', cascade='all, delete-orphan')
+    # Note: Transactions now reference Purchase (supplier invoices), not PurchaseOrder
+    # purchases = relationship defined in Purchase model
     
     # Constraints
     __table_args__ = (
@@ -105,6 +107,90 @@ class PurchaseOrder(Base):
         return value.strip().upper()
 
 
+class Purchase(Base):
+    """
+    Supplier purchases/invoices that fulfill Local Purchase Orders.
+    
+    Flow: Local PO -> Purchase (supplier invoice) -> Transaction -> Coupon
+    Purchases reduce the Local PO quantity and provide stock for transactions.
+    """
+    
+    __tablename__ = 'purchases'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    invoice_number = Column(String(100), unique=True, nullable=False, index=True)
+    purchase_order_id = Column(Integer, ForeignKey('purchase_orders.id'), nullable=False)
+    product_id = Column(Integer, ForeignKey('products.id'), nullable=False)
+    quantity = Column(Integer, nullable=False)
+    remaining_stock = Column(Integer, nullable=False)  # Tracks what's left to distribute
+    unit_price = Column(Numeric(10, 3), nullable=False)  # Price per unit in BHD
+    total_price = Column(Numeric(10, 3), nullable=False)  # Total price (qty * unit_price)
+    purchase_date = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    supplier_name = Column(String(255), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    # Relationships
+    purchase_order = relationship('PurchaseOrder', backref='purchases')
+    product = relationship('Product')
+    transactions = relationship('Transaction', back_populates='purchase', cascade='all, delete-orphan')
+    
+    # Constraints
+    __table_args__ = (
+        CheckConstraint('quantity > 0', name='check_purchase_quantity_positive'),
+        CheckConstraint('remaining_stock >= 0', name='check_purchase_remaining_stock_positive'),
+        CheckConstraint('remaining_stock <= quantity', name='check_purchase_remaining_not_exceed_quantity'),
+        CheckConstraint('unit_price >= 0', name='check_purchase_unit_price_positive'),
+        CheckConstraint('total_price >= 0', name='check_purchase_total_price_positive'),
+    )
+    
+    def __repr__(self):
+        return f"<Purchase(id={self.id}, invoice='{self.invoice_number}', qty={self.quantity}, remaining={self.remaining_stock})>"
+    
+    @validates('quantity', 'remaining_stock')
+    def validate_quantity(self, key, value):
+        if key == 'quantity' and value <= 0:
+            raise ValueError("Purchase quantity must be greater than 0")
+        if key == 'remaining_stock' and value < 0:
+            raise ValueError("Remaining stock cannot be negative")
+        return value
+    
+    @validates('invoice_number')
+    def validate_invoice_number(self, key, value):
+        if not value or not value.strip():
+            raise ValueError("Invoice number cannot be empty")
+        return value.strip().upper()
+
+
+class Pharmacy(Base):
+    """Pharmacy groups that contain multiple distribution locations/branches."""
+    
+    __tablename__ = 'pharmacies'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(255), unique=True, nullable=False)
+    reference = Column(String(100), unique=True, nullable=False, index=True)
+    contact_person = Column(String(255), nullable=True)
+    phone = Column(String(50), nullable=True)
+    email = Column(String(255), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    # Relationships
+    distribution_locations = relationship('DistributionLocation', back_populates='pharmacy', cascade='all, delete-orphan')
+    
+    def __repr__(self):
+        return f"<Pharmacy(id={self.id}, name='{self.name}', reference='{self.reference}')>"
+    
+    @validates('reference')
+    def validate_reference(self, key, value):
+        if not value or not value.strip():
+            raise ValueError("Pharmacy reference cannot be empty")
+        return value.strip().upper()
+
+
 class DistributionLocation(Base):
     """Distribution locations where products are sent."""
     
@@ -113,6 +199,7 @@ class DistributionLocation(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False)
     reference = Column(String(100), unique=True, nullable=False, index=True)
+    pharmacy_id = Column(Integer, ForeignKey('pharmacies.id'), nullable=True)  # Optional pharmacy grouping
     address = Column(Text, nullable=True)
     contact_person = Column(String(255), nullable=True)
     phone = Column(String(50), nullable=True)
@@ -120,6 +207,7 @@ class DistributionLocation(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # Relationships
+    pharmacy = relationship('Pharmacy', back_populates='distribution_locations')
     coupons = relationship('PatientCoupon', back_populates='distribution_location')
     transactions = relationship('Transaction', back_populates='distribution_location', cascade='all, delete-orphan')
     
@@ -175,6 +263,8 @@ class PatientCoupon(Base):
     product_id = Column(Integer, ForeignKey('products.id'), nullable=True)  # Optional product link
     verified = Column(Boolean, default=False, nullable=False, index=True)
     verification_reference = Column(String(100), nullable=True)
+    delivery_note_number = Column(String(100), nullable=True, index=True)  # NEW: Delivery note for verification
+    grv_reference = Column(String(100), nullable=True, index=True)  # NEW: GRV reference number
     date_received = Column(DateTime, default=datetime.utcnow, nullable=False)
     date_verified = Column(DateTime, nullable=True)
     notes = Column(Text, nullable=True)
@@ -218,18 +308,18 @@ class PatientCoupon(Base):
 
 class Transaction(Base):
     """
-    Transactions for tracking product transfers to distribution locations.
+    Transactions for tracking product transfers from supplier purchases to distribution locations.
     
-    This table handles stock reduction when products are sent out.
-    Verification (in PatientCoupon) is now just delivery confirmation,
-    not stock deduction.
+    New Flow: Local PO -> Purchase (supplier invoice) -> Transaction -> Coupon
+    Transactions now reference Purchase (supplier invoice) instead of PO directly.
+    This tracks which specific purchase batch was sent to which distribution location.
     """
     
     __tablename__ = 'transactions'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     transaction_reference = Column(String(100), unique=True, nullable=False, index=True)
-    purchase_order_id = Column(Integer, ForeignKey('purchase_orders.id'), nullable=False)
+    purchase_id = Column(Integer, ForeignKey('purchases.id'), nullable=False)  # Changed from purchase_order_id
     product_id = Column(Integer, ForeignKey('products.id'), nullable=False)
     distribution_location_id = Column(Integer, ForeignKey('distribution_locations.id'), nullable=False)
     quantity = Column(Integer, nullable=False)
@@ -239,7 +329,7 @@ class Transaction(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     # Relationships
-    purchase_order = relationship('PurchaseOrder', back_populates='transactions')
+    purchase = relationship('Purchase', back_populates='transactions')  # Changed from purchase_order
     product = relationship('Product')
     distribution_location = relationship('DistributionLocation', back_populates='transactions')
     

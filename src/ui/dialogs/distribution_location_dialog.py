@@ -15,11 +15,12 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QLabel,
     QMessageBox,
+    QComboBox,
 )
 from PyQt6.QtCore import Qt
 
 from src.database.db_manager import DatabaseManager
-from src.database.models import DistributionLocation
+from src.database.models import DistributionLocation, Pharmacy
 from src.utils import validate_name, validate_reference, validate_phone, sanitize_input, normalize_reference
 
 
@@ -61,6 +62,12 @@ class DistributionLocationDialog(QDialog):
         self.reference_input = QLineEdit()
         self.reference_input.setPlaceholderText("Enter unique reference (e.g., LOC-001)")
         form_layout.addRow("Reference: *", self.reference_input)
+        
+        # Pharmacy (optional grouping)
+        self.pharmacy_combo = QComboBox()
+        self.pharmacy_combo.addItem("None", None)  # No pharmacy selected
+        self.load_pharmacies()
+        form_layout.addRow("Pharmacy:", self.pharmacy_combo)
         
         # Address
         self.address_input = QTextEdit()
@@ -116,11 +123,30 @@ class DistributionLocationDialog(QDialog):
         
         layout.addLayout(button_layout)
     
+    def load_pharmacies(self):
+        """Load pharmacies into the combo box."""
+        try:
+            with self.db_manager.get_session() as session:
+                pharmacies = session.query(Pharmacy).order_by(Pharmacy.name).all()
+                
+                for pharmacy in pharmacies:
+                    self.pharmacy_combo.addItem(pharmacy.name, pharmacy.id)
+        except Exception as e:
+            print(f"Error loading pharmacies: {e}")
+    
     def populate_fields(self):
         """Populate form fields with existing location data."""
         if self.location:
             self.name_input.setText(self.location.name)
             self.reference_input.setText(self.location.reference)
+            
+            # Set pharmacy if assigned
+            if self.location.pharmacy_id:
+                for i in range(self.pharmacy_combo.count()):
+                    if self.pharmacy_combo.itemData(i) == self.location.pharmacy_id:
+                        self.pharmacy_combo.setCurrentIndex(i)
+                        break
+            
             if self.location.address:
                 self.address_input.setPlainText(self.location.address)
             if self.location.contact_person:
@@ -192,6 +218,9 @@ class DistributionLocationDialog(QDialog):
             contact_person = self.contact_input.text().strip()
             phone = self.phone_input.text().strip()
             
+            # Get selected pharmacy ID (None if "None" is selected)
+            pharmacy_id = self.pharmacy_combo.currentData()
+            
             if self.is_edit_mode:
                 # Update existing location
                 self.location.name = name
@@ -199,6 +228,7 @@ class DistributionLocationDialog(QDialog):
                 self.location.address = address if address else None
                 self.location.contact_person = contact_person if contact_person else None
                 self.location.phone = phone if phone else None
+                self.location.pharmacy_id = pharmacy_id
                 self.db_manager.update(self.location)
                 
                 QMessageBox.information(
@@ -213,7 +243,8 @@ class DistributionLocationDialog(QDialog):
                     reference=reference.upper(),
                     address=address if address else None,
                     contact_person=contact_person if contact_person else None,
-                    phone=phone if phone else None
+                    phone=phone if phone else None,
+                    pharmacy_id=pharmacy_id
                 )
                 self.db_manager.add(new_location)
                 

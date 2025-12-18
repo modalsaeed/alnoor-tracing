@@ -21,6 +21,8 @@ from .models import (
     Base,
     Product,
     PurchaseOrder,
+    Purchase,
+    Pharmacy,
     DistributionLocation,
     MedicalCentre,
     PatientCoupon,

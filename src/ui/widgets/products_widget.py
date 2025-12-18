@@ -104,15 +104,16 @@ class ProductsWidget(QWidget):
     def create_table(self) -> QTableWidget:
         """Create products table."""
         table = QTableWidget()
-        table.setColumnCount(4)
-        table.setHorizontalHeaderLabels(['ID', 'Name', 'Reference', 'Description'])
+        table.setColumnCount(5)
+        table.setHorizontalHeaderLabels(['ID', 'Name', 'Reference', 'Unit', 'Description'])
         
         # Set column widths
         header = table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         
         # Table settings
         table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -196,10 +197,15 @@ class ProductsWidget(QWidget):
             ref_item = QTableWidgetItem(product.reference)
             self.table.setItem(row, 2, ref_item)
             
+            # Unit
+            unit = product.unit or ""
+            unit_item = QTableWidgetItem(unit)
+            self.table.setItem(row, 3, unit_item)
+            
             # Description
             desc = product.description or ""
             desc_item = QTableWidgetItem(desc)
-            self.table.setItem(row, 3, desc_item)
+            self.table.setItem(row, 4, desc_item)
         
         self.table.setSortingEnabled(True)  # Re-enable sorting
     
@@ -216,6 +222,7 @@ class ProductsWidget(QWidget):
                 p for p in self.current_products
                 if search_text in p.name.lower() or
                    search_text in p.reference.lower() or
+                   (p.unit and search_text in p.unit.lower()) or
                    (p.description and search_text in p.description.lower())
             ]
             self.populate_table(filtered)

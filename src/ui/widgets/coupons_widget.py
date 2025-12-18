@@ -28,6 +28,7 @@ from src.database.db_manager import DatabaseManager
 from src.database.models import PatientCoupon, Product, MedicalCentre, DistributionLocation
 from src.ui.dialogs.coupon_dialog import CouponDialog
 from src.ui.dialogs.verify_coupon_dialog import VerifyCouponDialog
+from src.ui.dialogs.grv_reference_dialog import GRVReferenceDialog
 from src.utils import Colors, Fonts, Spacing, StyleSheets, IconStyles
 
 
@@ -94,8 +95,8 @@ class CouponsWidget(QWidget):
         self.product_filter.currentTextChanged.connect(self.apply_filters)
         filter_layout.addWidget(self.product_filter)
         
-        # Medical Centre filter
-        centre_label = QLabel("Centre:")
+        # MOH Health Centre filter
+        centre_label = QLabel("MOH Centre:")
         filter_layout.addWidget(centre_label)
         
         self.centre_filter = QComboBox()
@@ -154,11 +155,17 @@ class CouponsWidget(QWidget):
         bulk_add_btn.setStyleSheet(StyleSheets.button_primary(Colors.INFO))
         button_layout.addWidget(bulk_add_btn)
         
-        verify_btn = QPushButton(f"{IconStyles.VERIFIED} Verify Selected")
+        verify_btn = QPushButton(f"{IconStyles.VERIFIED} Verify Health Centre Code")
         verify_btn.setToolTip("Verify one or more selected coupons (Ctrl+Click for multiple)")
         verify_btn.clicked.connect(self.verify_coupon)
         verify_btn.setStyleSheet(StyleSheets.button_primary(Colors.PRIMARY))
         button_layout.addWidget(verify_btn)
+        
+        grv_btn = QPushButton("📄 Add GRV Reference")
+        grv_btn.setToolTip("Add Goods Received Voucher reference to verified bundles")
+        grv_btn.clicked.connect(self.add_grv_reference)
+        grv_btn.setStyleSheet(StyleSheets.button_primary(Colors.SUCCESS))
+        button_layout.addWidget(grv_btn)
         
         edit_btn = QPushButton(f"{IconStyles.EDIT} Edit")
         edit_btn.clicked.connect(self.edit_coupon)
@@ -195,7 +202,7 @@ class CouponsWidget(QWidget):
         self.table.setColumnCount(10)
         self.table.setHorizontalHeaderLabels([
             "ID", "Patient Name", "CPR", "Product", "Quantity",
-            "Medical Centre", "Distribution", "Date", "Status", "Verification Ref"
+            "MOH Health Centre", "Distribution", "Date", "Status", "Verification Ref"
         ])
         
         # Configure table
@@ -473,6 +480,12 @@ class CouponsWidget(QWidget):
         
         # Open verification dialog with list of coupons
         dialog = VerifyCouponDialog(self.db_manager, selected_coupons, parent=self)
+        if dialog.exec():
+            self.load_coupons()
+    
+    def add_grv_reference(self):
+        """Open dialog to add GRV reference to verified bundles."""
+        dialog = GRVReferenceDialog(self.db_manager, parent=self)
         if dialog.exec():
             self.load_coupons()
     

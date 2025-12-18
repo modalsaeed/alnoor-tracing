@@ -82,6 +82,10 @@ class PurchaseOrderDialog(QDialog):
         self.quantity_input.setSuffix(" units")
         self.quantity_input.valueChanged.connect(self.calculate_totals)
         form_layout.addRow("Quantity: *", self.quantity_input)
+
+        # --- Make unit price keyboard friendly ---
+        # After quantity, focus should go to unit price
+        # We'll set tab order after all widgets are created
         
         # Warehouse Location
         self.warehouse_input = QLineEdit()
@@ -114,8 +118,9 @@ class PurchaseOrderDialog(QDialog):
         self.unit_price_input.setDecimals(3)
         self.unit_price_input.setValue(0.000)
         self.unit_price_input.setSuffix(" BHD")
-        self.unit_price_input.setSpecialValueText("Not specified")
         self.unit_price_input.valueChanged.connect(self.calculate_totals)
+        # Clear field on focus for immediate typing
+        self.unit_price_input.lineEdit().installEventFilter(self)
         pricing_layout.addRow("Unit Price:", self.unit_price_input)
         
         # Tax Rate
@@ -124,7 +129,6 @@ class PurchaseOrderDialog(QDialog):
         self.tax_rate_input.setDecimals(2)
         self.tax_rate_input.setValue(0.00)
         self.tax_rate_input.setSuffix(" %")
-        self.tax_rate_input.setSpecialValueText("No tax")
         self.tax_rate_input.valueChanged.connect(self.calculate_totals)
         pricing_layout.addRow("Tax Rate:", self.tax_rate_input)
         
@@ -196,6 +200,25 @@ class PurchaseOrderDialog(QDialog):
         button_layout.addWidget(self.save_btn)
         
         layout.addLayout(button_layout)
+        
+        # Set tab order: after quantity, go to unit price
+        self.setTabOrder(self.quantity_input, self.unit_price_input)
+    
+    def eventFilter(self, obj, event):
+        """Clear unit price field on focus so user can immediately type."""
+        if obj == self.unit_price_input.lineEdit():
+            from PyQt6.QtCore import QEvent
+            if event.type() == QEvent.Type.FocusIn:
+                # Completely clear the field when focused for immediate typing
+                if self.unit_price_input.value() == 0.000:
+                    # Use QTimer to clear after focus is established
+                    from PyQt6.QtCore import QTimer
+                    QTimer.singleShot(0, lambda: self.unit_price_input.lineEdit().clear())
+                else:
+                    # If there's a value, select all for replacement
+                    from PyQt6.QtCore import QTimer
+                    QTimer.singleShot(0, lambda: self.unit_price_input.lineEdit().selectAll())
+        return super().eventFilter(obj, event)
     
     def load_products(self):
         """Load products into dropdown."""

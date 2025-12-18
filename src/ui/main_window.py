@@ -18,8 +18,10 @@ from src.database.db_manager import DatabaseManager
 from src.ui.widgets.dashboard_widget import DashboardWidget
 from src.ui.widgets.products_widget import ProductsWidget
 from src.ui.widgets.distribution_locations_widget import DistributionLocationsWidget
+from src.ui.widgets.pharmacies_widget import PharmaciesWidget
 from src.ui.widgets.medical_centres_widget import MedicalCentresWidget
 from src.ui.widgets.purchase_orders_widget import PurchaseOrdersWidget
+from src.ui.widgets.purchases_widget import PurchasesWidget
 from src.ui.widgets.coupons_widget import CouponsWidget
 from src.ui.widgets.transactions_widget import TransactionsWidget
 from src.ui.widgets.reports_widget import ReportsWidget
@@ -92,36 +94,47 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.tabs.setTabPosition(QTabWidget.TabPosition.North)
         
-        # Add tabs with actual widgets
-        # Dashboard tab - actual widget
+        # Connect tab change event to refresh handler
+        self.tabs.currentChanged.connect(self.on_tab_changed)
+        
+        # Add tabs in new order
+        # Dashboard tab
         self.dashboard_widget = DashboardWidget(self.db_manager)
         self.tabs.addTab(self.dashboard_widget, "📊 Dashboard")
         
-        # Purchase Orders tab - actual widget
-        self.purchase_orders_widget = PurchaseOrdersWidget(self.db_manager)
-        self.tabs.addTab(self.purchase_orders_widget, "📦 Purchase Orders")
-        
-        # Products tab - actual widget
+        # Products tab
         self.products_widget = ProductsWidget(self.db_manager)
         self.tabs.addTab(self.products_widget, "🏷️ Products")
-        
-        # Distribution Locations tab - actual widget
+
+        # Pharmacies tab
+        self.pharmacies_widget = PharmaciesWidget(self.db_manager)
+        self.tabs.addTab(self.pharmacies_widget, "💊 Pharmacies")
+
+        # Distribution Locations tab
         self.distribution_widget = DistributionLocationsWidget(self.db_manager)
         self.tabs.addTab(self.distribution_widget, "📍 Distribution")
-        
-        # Medical Centres tab - actual widget
+
+        # Medical Centres tab
         self.medical_centres_widget = MedicalCentresWidget(self.db_manager)
-        self.tabs.addTab(self.medical_centres_widget, "🏥 Medical Centres")
-        
-        # Coupons tab - actual widget
-        self.coupons_widget = CouponsWidget(self.db_manager)
-        self.tabs.addTab(self.coupons_widget, "🎫 Coupons")
-        
-        # Transactions tab - actual widget
+        self.tabs.addTab(self.medical_centres_widget, "🏥 MOH Health Centres")
+
+        # Local Purchase Orders tab
+        self.purchase_orders_widget = PurchaseOrdersWidget(self.db_manager)
+        self.tabs.addTab(self.purchase_orders_widget, "📋 Local Purchase Order")
+
+        # Supplier Purchases tab
+        self.purchases_widget = PurchasesWidget(self.db_manager)
+        self.tabs.addTab(self.purchases_widget, "🛒 Supplier Purchase")
+
+        # Transactions tab
         self.transactions_widget = TransactionsWidget(self.db_manager)
         self.tabs.addTab(self.transactions_widget, "🔄 Transactions")
-        
-        # Reports tab - actual widget
+
+        # Coupons tab
+        self.coupons_widget = CouponsWidget(self.db_manager)
+        self.tabs.addTab(self.coupons_widget, "🎫 Coupons")
+
+        # Reports tab
         self.reports_widget = ReportsWidget(self.db_manager)
         self.tabs.addTab(self.reports_widget, "📄 Reports")
         
@@ -244,10 +257,36 @@ class MainWindow(QMainWindow):
             "About Alnoor Medical Services",
             "<h2>Alnoor Medical Services</h2>"
             "<p>Database Tracking System</p>"
-            "<p>Version 1.0.0</p>"
+            "<p>Version 1.0.3</p>"
             "<p>Copyright © 2025 Alnoor Medical Services</p>"
             "<p>All rights reserved.</p>"
         )
+    
+    def on_tab_changed(self, index):
+        """Handle tab change event - refresh current tab data."""
+        if index < 0:
+            return
+        
+        # Get the current widget
+        current_widget = self.tabs.widget(index)
+        
+        # Call refresh/load method if available
+        if hasattr(current_widget, 'load_data'):
+            current_widget.load_data()
+        elif hasattr(current_widget, 'refresh'):
+            current_widget.refresh()
+        elif hasattr(current_widget, 'load_coupons'):
+            current_widget.load_coupons()
+        elif hasattr(current_widget, 'load_transactions'):
+            current_widget.load_transactions()
+        elif hasattr(current_widget, 'load_purchase_orders'):
+            current_widget.load_purchase_orders()
+        elif hasattr(current_widget, 'load_products'):
+            current_widget.load_products()
+        elif hasattr(current_widget, 'load_medical_centres'):
+            current_widget.load_medical_centres()
+        elif hasattr(current_widget, 'load_distribution_locations'):
+            current_widget.load_distribution_locations()
     
     def closeEvent(self, event):
         """Handle window close event."""

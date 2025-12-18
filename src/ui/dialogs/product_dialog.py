@@ -62,6 +62,12 @@ class ProductDialog(QDialog):
         self.reference_input.setPlaceholderText("Enter unique reference (e.g., PROD-001)")
         form_layout.addRow("Reference: *", self.reference_input)
         
+        # Product Unit
+        self.unit_input = QLineEdit()
+        self.unit_input.setPlaceholderText("e.g., ctn, box, pcs, kg")
+        self.unit_input.setMaxLength(50)
+        form_layout.addRow("Unit:", self.unit_input)
+        
         # Description
         self.description_input = QTextEdit()
         self.description_input.setPlaceholderText("Enter product description (optional)")
@@ -111,6 +117,8 @@ class ProductDialog(QDialog):
         if self.product:
             self.name_input.setText(self.product.name)
             self.reference_input.setText(self.product.reference)
+            if self.product.unit:
+                self.unit_input.setText(self.product.unit)
             if self.product.description:
                 self.description_input.setPlainText(self.product.description)
     
@@ -168,12 +176,14 @@ class ProductDialog(QDialog):
             # Sanitize and normalize inputs
             name = sanitize_input(self.name_input.text())
             reference = normalize_reference(sanitize_input(self.reference_input.text()))
+            unit = sanitize_input(self.unit_input.text())
             description = sanitize_input(self.description_input.toPlainText())
             
             if self.is_edit_mode:
                 # Update existing product
                 self.product.name = name
                 self.product.reference = reference
+                self.product.unit = unit if unit else None
                 self.product.description = description if description else None
                 self.db_manager.update(self.product)
                 
@@ -187,6 +197,7 @@ class ProductDialog(QDialog):
                 new_product = Product(
                     name=name,
                     reference=reference,
+                    unit=unit if unit else None,
                     description=description if description else None
                 )
                 self.db_manager.add(new_product)
