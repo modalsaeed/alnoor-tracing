@@ -363,8 +363,6 @@ VersionInfoCopyright=Copyright (C) $(Get-Date -Format yyyy) {#MyAppPublisher}
 ; CloseApplications will try to close the app before upgrade
 CloseApplications=yes
 RestartApplications=no
-PrivilegesRequired=admin
-UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

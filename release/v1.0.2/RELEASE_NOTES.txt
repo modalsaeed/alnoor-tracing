@@ -1,0 +1,116 @@
+﻿===========================================
+Alnoor Medical Services - Release Notes
+Version 1.0.2
+===========================================
+
+Build Date: 2025-12-18 10:59:58
+
+NEW FEATURES
+------------
+
+âœ¨ Complete Stock Management System
+   - Transaction-based stock tracking with FIFO
+   - Purchase orders with pricing (unit price, tax, totals)
+   - Distribution location stock monitoring
+   - Stock IN/OUT tracking with detailed breakdowns
+
+âœ¨ Enhanced Coupon Management
+   - Bulk coupon insertion for efficient data entry
+   - Optional patient fields for bulk operations
+   - Searchable dropdowns with quick-add buttons
+   - Multi-select verification (Ctrl+Click, Shift+Click)
+
+âœ¨ Improved User Interface
+   - Full forms for adding medical centres and locations
+   - Real-time stock calculations
+   - Color-coded stock levels (red/yellow/green)
+   - Detailed tooltips with stock breakdowns
+   - Negative stock warnings for overdrawn locations
+
+âœ¨ Database Isolation
+   - Development and production databases separated
+   - Each user gets independent database
+   - No test data in production installations
+   - Platform-agnostic storage (Windows/macOS/Linux)
+
+IMPROVEMENTS
+------------
+
+ðŸ”§ Stock Flow Logic
+   - Transactions reduce purchase order stock (FIFO)
+   - Coupons reduce distribution location stock
+   - Verification is delivery confirmation only (no stock changes)
+
+ðŸ”§ Pricing Management
+   - Purchase orders show unit price, tax rate, and totals
+   - Automatic tax calculations
+   - Warehouse location removed (not needed)
+
+ðŸ”§ Data Entry Efficiency
+   - Bulk add multiple coupons at once
+   - Quick-add buttons for centres and locations
+   - Searchable combo boxes with auto-complete
+
+BUG FIXES
+---------
+
+ðŸ› Fixed transaction dialog date field error
+ðŸ› Fixed validation error in transaction reference
+ðŸ› Fixed filter issues with None values
+ðŸ› Fixed date range filtering
+
+TECHNICAL DETAILS
+-----------------
+
+Database: SQLite with SQLAlchemy ORM
+UI Framework: PyQt6 6.10.0
+Python Version: 3.13.9
+Build Tool: PyInstaller 6.16.0
+
+File Sizes:
+- Executable: 62.72 MB
+- Installer: ~68 MB
+
+DATABASE STRUCTURE
+------------------
+
+Core Tables:
+- products: Product catalog
+- purchase_orders: Stock source with pricing
+- transactions: Stock transfers (PO â†’ Location)
+- patient_coupons: Distribution records (Location â†’ Patient)
+- medical_centres: Issuing centres
+- distribution_locations: Stock destinations
+
+Stock Flow:
+Purchase Order â†’ Transaction â†’ Distribution Location â†’ Coupon â†’ Verified
+
+INSTALLATION NOTES
+------------------
+
+âœ… Clean installation (no data migration needed)
+âœ… Database created automatically on first run
+âœ… Multi-user support (separate DBs per user)
+âœ… No development test data included
+
+KNOWN ISSUES
+------------
+
+None reported in this version.
+
+UPGRADE INSTRUCTIONS
+--------------------
+
+This is version 1.0.2. If upgrading from a previous version:
+
+1. Export your data before uninstalling old version
+2. Install new version
+3. Import data if needed
+4. Verify all data imported correctly
+
+For questions or support, please contact:
+GitHub: https://github.com/modalsaeed/alnoor-tracing
+
+===========================================
+Â© 2025 Alnoor Medical Services
+===========================================

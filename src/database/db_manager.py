@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Optional, Type, TypeVar, List
 from contextlib import contextmanager
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, Session, joinedload
 from sqlalchemy.engine import Engine
 
@@ -112,8 +112,80 @@ class DatabaseManager:
         )
     
     def _initialize_database(self):
-        """Create all tables if they don't exist."""
+        """Create all tables if they don't exist, and run migrations if needed."""
         Base.metadata.create_all(self._engine)
+        self._run_migrations()
+    
+    def _run_migrations(self):
+        """Check database schema and apply migrations if needed."""
+        try:
+            # Use raw connection for migrations to avoid circular dependencies
+            with self._engine.connect() as connection:
+                # Check if products table has 'unit' column
+                result = connection.execute(text("PRAGMA table_info(products)"))
+                columns = [row[1] for row in result.fetchall()]
+                
+                if 'unit' not in columns:
+                    print("Migrating database: Adding 'unit' column to products...")
+                    connection.execute(text("ALTER TABLE products ADD COLUMN unit VARCHAR(50)"))
+                    connection.commit()
+                
+                # Check if pharmacies table exists
+                result = connection.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='pharmacies'"))
+                if not result.fetchone():
+                    print("Migrating database: Creating pharmacies table...")
+                    connection.execute(text("""
+                        CREATE TABLE pharmacies (
+                            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                            name VARCHAR(100) NOT NULL UNIQUE,
+                            reference VARCHAR(50) NOT NULL UNIQUE,
+                            contact_person VARCHAR(100),
+                            phone VARCHAR(20),
+                            email VARCHAR(100),
+                            notes TEXT,
+                            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """))
+                    connection.execute(text("CREATE INDEX ix_pharmacies_reference ON pharmacies (reference)"))
+                    connection.commit()
+                
+                # Check if distribution_locations has pharmacy_id column
+                result = connection.execute(text("PRAGMA table_info(distribution_locations)"))
+                columns = [row[1] for row in result.fetchall()]
+                
+                if 'pharmacy_id' not in columns:
+                    print("Migrating database: Adding 'pharmacy_id' to distribution_locations...")
+                    connection.execute(text("ALTER TABLE distribution_locations ADD COLUMN pharmacy_id INTEGER REFERENCES pharmacies(id)"))
+                    connection.commit()
+                
+                # Check if transactions has purchase_id column (renamed from purchase_order_id)
+                result = connection.execute(text("PRAGMA table_info(transactions)"))
+                columns = [row[1] for row in result.fetchall()]
+                
+                if 'purchase_id' not in columns:
+                    print("Migrating database: Adding 'purchase_id' to transactions...")
+                    connection.execute(text("ALTER TABLE transactions ADD COLUMN purchase_id INTEGER REFERENCES purchases(id)"))
+                    connection.commit()
+                
+                # Check if patient_coupons has delivery_note_number and grv_reference columns
+                result = connection.execute(text("PRAGMA table_info(patient_coupons)"))
+                columns = [row[1] for row in result.fetchall()]
+                
+                if 'delivery_note_number' not in columns:
+                    print("Migrating database: Adding 'delivery_note_number' to patient_coupons...")
+                    connection.execute(text("ALTER TABLE patient_coupons ADD COLUMN delivery_note_number VARCHAR(100)"))
+                    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_patient_coupons_delivery_note ON patient_coupons (delivery_note_number)"))
+                    connection.commit()
+                
+                if 'grv_reference' not in columns:
+                    print("Migrating database: Adding 'grv_reference' to patient_coupons...")
+                    connection.execute(text("ALTER TABLE patient_coupons ADD COLUMN grv_reference VARCHAR(100)"))
+                    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_patient_coupons_grv_reference ON patient_coupons (grv_reference)"))
+                    connection.commit()
+                
+        except Exception as e:
+            print(f"Migration check failed: {e}")
     
     @contextmanager
     def get_session(self):
