@@ -1,0 +1,56 @@
+# Alnoor Medical Services - Configuration File
+# 
+# This file controls where the application stores its database.
+# 
+# DEPLOYMENT OPTIONS:
+# 
+# 1. LOCAL DEPLOYMENT (Default - no config.ini needed)
+#    - Database stored in user's AppData folder
+#    - Each PC has its own separate database
+#    - No configuration required
+# 
+# 2. NETWORK DEPLOYMENT (Requires config.ini)
+#    - Database stored on shared network drive
+#    - Multiple PCs access the same database
+#    - Requires this config file
+# 
+# NETWORK DEPLOYMENT SETUP:
+# 
+# 1. Create a network share for the database:
+#    Example: \\SERVER\Shared\AlnoorDB\
+# 
+# 2. Copy this file and rename it to "config.ini" (remove .example)
+# 
+# 3. Place config.ini in the application directory:
+#    C:\Program Files\Alnoor Medical Services\config.ini
+# 
+# 4. Uncomment and edit the [database] section below
+# 
+# 5. Install the application on each PC that needs access
+# 
+# IMPORTANT NOTES:
+# - Use UNC paths (\\SERVER\Share\...) for network databases
+# - Install the APPLICATION locally on each PC (C:\Program Files\...)
+# - Only the DATABASE should be on the network share
+# - Ensure all PCs have read/write access to the network share
+# - Set up automated daily backups (see NETWORK_DEPLOYMENT_GUIDE.md)
+# 
+# ============================================================================
+
+# Uncomment and edit the line below for network deployment:
+# [database]
+# path = \\SERVER\Shared\AlnoorDB\alnoor.db
+
+# Example configurations:
+# 
+# Windows network share:
+# [database]
+# path = \\OFFICE-SERVER\AlnoorDB\alnoor.db
+# 
+# Mapped network drive:
+# [database]
+# path = Z:\AlnoorDB\alnoor.db
+# 
+# Local custom path:
+# [database]
+# path = D:\AlnoorData\alnoor.db

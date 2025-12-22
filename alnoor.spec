@@ -26,6 +26,10 @@ a = Analysis(
     pathex=[str(project_root), str(src_dir)],
     binaries=[],
     datas=[
+        # Include template files for delivery notes
+        ('resources/templates/*.xlsx', 'resources/templates'),
+        # Include config.ini.example for network deployment
+        ('config.ini.example', '.'),
         # DO NOT include data directory - each installation creates its own database
         # Database will be created in user's AppData directory on first run
     ],

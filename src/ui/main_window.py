@@ -251,36 +251,24 @@ class MainWindow(QMainWindow):
         
         # Get the current widget
         current_widget = self.tabs.widget(index)
-        tab_name = self.tabs.tabText(index)
-        print(f"DEBUG: Tab changed to: {tab_name}")
         
         # Call refresh/load method if available
         if hasattr(current_widget, 'load_data'):
-            print(f"DEBUG: Calling load_data() on {tab_name}")
             current_widget.load_data()
         elif hasattr(current_widget, 'refresh'):
-            print(f"DEBUG: Calling refresh() on {tab_name}")
             current_widget.refresh()
         elif hasattr(current_widget, 'load_coupons'):
-            print(f"DEBUG: Calling load_coupons() on {tab_name}")
             current_widget.load_coupons()
         elif hasattr(current_widget, 'load_transactions'):
-            print(f"DEBUG: Calling load_transactions() on {tab_name}")
             current_widget.load_transactions()
         elif hasattr(current_widget, 'load_purchase_orders'):
-            print(f"DEBUG: Calling load_purchase_orders() on {tab_name}")
             current_widget.load_purchase_orders()
         elif hasattr(current_widget, 'load_products'):
-            print(f"DEBUG: Calling load_products() on {tab_name}")
             current_widget.load_products()
         elif hasattr(current_widget, 'load_medical_centres'):
-            print(f"DEBUG: Calling load_medical_centres() on {tab_name}")
             current_widget.load_medical_centres()
         elif hasattr(current_widget, 'load_distribution_locations'):
-            print(f"DEBUG: Calling load_distribution_locations() on {tab_name}")
             current_widget.load_distribution_locations()
-        else:
-            print(f"DEBUG: No refresh method found for {tab_name}")
     
     def closeEvent(self, event):
         """Handle window close event."""

@@ -8,6 +8,7 @@ and provides helper methods for common database operations.
 import os
 import sys
 import shutil
+import configparser
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Type, TypeVar, List
@@ -66,33 +67,53 @@ class DatabaseManager:
                 db_path = test_db
                 print(f"Using TEST database: {db_path}")
             else:
-                # Determine if running as frozen executable (PyInstaller) or as script
-                if getattr(sys, 'frozen', False):
-                    # Running as compiled executable
-                    # Use user's AppData directory for database
-                    app_name = 'Alnoor Medical Services'
-                    if sys.platform == 'win32':
-                        # Windows: Use LOCALAPPDATA
-                        app_data = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
-                        data_dir = app_data / app_name / 'database'
-                    elif sys.platform == 'darwin':
-                        # macOS: Use ~/Library/Application Support
-                        data_dir = Path.home() / 'Library' / 'Application Support' / app_name / 'database'
-                    else:
-                        # Linux: Use ~/.local/share
-                        data_dir = Path.home() / '.local' / 'share' / app_name / 'database'
-                else:
-                    # Running as script in development
-                    # Use data/ folder in project root
-                    project_root = Path(__file__).parent.parent.parent
-                    data_dir = project_root / 'data'
+                # Check for config.ini file (for network deployment)
+                config_path = self._get_config_path()
+                if config_path and config_path.exists():
+                    config = configparser.ConfigParser()
+                    config.read(config_path)
+                    if 'database' in config and 'path' in config['database']:
+                        db_path = config['database']['path']
+                        print(f"Using database from config.ini: {db_path}")
                 
-                data_dir.mkdir(parents=True, exist_ok=True)
-                db_path = str(data_dir / 'alnoor.db')
+                # If no config or no database path in config, use defaults
+                if not db_path:
+                    # Determine if running as frozen executable (PyInstaller) or as script
+                    if getattr(sys, 'frozen', False):
+                        # Running as compiled executable
+                        # Use user's AppData directory for database
+                        app_name = 'Alnoor Medical Services'
+                        if sys.platform == 'win32':
+                            # Windows: Use LOCALAPPDATA
+                            app_data = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
+                            data_dir = app_data / app_name / 'database'
+                        elif sys.platform == 'darwin':
+                            # macOS: Use ~/Library/Application Support
+                            data_dir = Path.home() / 'Library' / 'Application Support' / app_name / 'database'
+                        else:
+                            # Linux: Use ~/.local/share
+                            data_dir = Path.home() / '.local' / 'share' / app_name / 'database'
+                    else:
+                        # Running as script in development
+                        # Use data/ folder in project root
+                        project_root = Path(__file__).parent.parent.parent
+                        data_dir = project_root / 'data'
+                    
+                    data_dir.mkdir(parents=True, exist_ok=True)
+                    db_path = str(data_dir / 'alnoor.db')
         
         self.db_path = db_path
         self._initialize_engine()
         self._initialize_database()
+    
+    def _get_config_path(self) -> Optional[Path]:
+        """Get the path to config.ini file."""
+        if getattr(sys, 'frozen', False):
+            # Running as compiled executable - config.ini should be next to the exe
+            return Path(sys.executable).parent / 'config.ini'
+        else:
+            # Running as script - config.ini in project root
+            return Path(__file__).parent.parent.parent / 'config.ini'
     
     def _initialize_engine(self):
         """Create SQLAlchemy engine with SQLite-specific settings."""
@@ -103,7 +124,7 @@ class DatabaseManager:
             future=True,
             pool_pre_ping=True,
             connect_args={
-                'timeout': 30,  # 30 second timeout for locked database
+                'timeout': 60,  # 60 second timeout for locked database (network stability)
                 'check_same_thread': False,  # Allow multi-threaded access
             },
         )
@@ -114,7 +135,7 @@ class DatabaseManager:
             cursor = dbapi_conn.cursor()
             cursor.execute("PRAGMA foreign_keys=ON")
             cursor.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging for better concurrency
-            cursor.execute("PRAGMA busy_timeout=30000")  # 30 second busy timeout
+            cursor.execute("PRAGMA busy_timeout=60000")  # 60 second busy timeout for network stability
             cursor.execute("PRAGMA synchronous=NORMAL")  # Balance safety and performance
             cursor.close()
         

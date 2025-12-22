@@ -543,6 +543,28 @@ GitHub: {APP_URL}
     Path(f"{release_dir}/README.txt").write_text(readme, encoding='utf-8')
     print_success("Created README.txt")
     
+    # Copy network deployment guides
+    network_guide = Path("NETWORK_DEPLOYMENT_GUIDE.md")
+    quickstart = Path("NETWORK_DEPLOYMENT_QUICKSTART.md")
+    config_example = Path("config.ini.example")
+    
+    if network_guide.exists():
+        shutil.copy2(network_guide, f"{release_dir}/NETWORK_DEPLOYMENT_GUIDE.md")
+        print_success("Copied NETWORK_DEPLOYMENT_GUIDE.md")
+    
+    if quickstart.exists():
+        shutil.copy2(quickstart, f"{release_dir}/NETWORK_DEPLOYMENT_QUICKSTART.md")
+        print_success("Copied NETWORK_DEPLOYMENT_QUICKSTART.md")
+    
+    simple_guide = Path("SIMPLE_INSTALLATION_GUIDE.md")
+    if simple_guide.exists():
+        shutil.copy2(simple_guide, f"{release_dir}/SIMPLE_INSTALLATION_GUIDE.md")
+        print_success("Copied SIMPLE_INSTALLATION_GUIDE.md")
+    
+    if config_example.exists():
+        shutil.copy2(config_example, f"{release_dir}/config.ini.example")
+        print_success("Copied config.ini.example")
+    
     # Create Release Notes
     release_notes = f"""===========================================
 {APP_NAME} - Release Notes

@@ -352,9 +352,17 @@ class DeliveryNoteDialog(QDialog):
         try:
             from openpyxl import Workbook, load_workbook
             from openpyxl.styles import Font, Alignment, Border, Side
+            import sys
             
-            # Check if template exists
-            template_path = Path(__file__).parent.parent.parent.parent / "resources" / "templates" / "delivery_note_template.xlsx"
+            # Check if template exists - handle frozen executable
+            if getattr(sys, 'frozen', False):
+                # Running as compiled executable
+                base_path = Path(sys._MEIPASS)
+            else:
+                # Running as script
+                base_path = Path(__file__).parent.parent.parent.parent
+            
+            template_path = base_path / "resources" / "templates" / "delivery_note_template.xlsx"
             
             if template_path.exists():
                 # Load template

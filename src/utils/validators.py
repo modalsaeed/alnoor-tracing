@@ -79,7 +79,7 @@ def validate_po_reference(po_ref: str) -> Tuple[bool, str]:
     """
     Validate Purchase Order reference format.
     
-    Expected format: PO-YYYY-NNN or similar
+    Expected format: Flexible - any characters allowed
     
     Args:
         po_ref: PO reference to validate
@@ -95,21 +95,18 @@ def validate_po_reference(po_ref: str) -> Tuple[bool, str]:
     if len(po_ref) < 2:
         return False, "PO reference must be at least 2 characters."
     
-    # Allow flexible format but ensure it has content
-    if not re.match(r'^[A-Za-z0-9\-_/]+$', po_ref):
-        return False, "PO reference can only contain letters, numbers, dashes, slashes, and underscores."
-    
+    # Allow any printable characters including spaces
     return True, ""
 
 
-def validate_quantity(quantity: int, min_qty: int = 1, max_qty: int = 1000000) -> Tuple[bool, str]:
+def validate_quantity(quantity: int, min_qty: int = 1, max_qty: int = 100000000) -> Tuple[bool, str]:
     """
     Validate quantity value.
     
     Args:
         quantity: Quantity to validate
         min_qty: Minimum allowed quantity (default: 1)
-        max_qty: Maximum allowed quantity (default: 1,000,000)
+        max_qty: Maximum allowed quantity (default: 100,000,000)
         
     Returns:
         Tuple of (is_valid, error_message)
@@ -315,7 +312,7 @@ class ValidationConstants:
     
     # Quantity constraints
     MIN_QUANTITY = 1
-    MAX_QUANTITY = 1000000
+    MAX_QUANTITY = 100000000
     
     # Phone constraints
     MIN_PHONE_DIGITS = 5

@@ -77,7 +77,7 @@ class PurchaseOrderDialog(QDialog):
         
         # Quantity
         self.quantity_input = QSpinBox()
-        self.quantity_input.setRange(1, 1000000)
+        self.quantity_input.setRange(1, 100000000)
         self.quantity_input.setValue(100)
         self.quantity_input.setSuffix(" units")
         self.quantity_input.valueChanged.connect(self.calculate_totals)
@@ -114,8 +114,8 @@ class PurchaseOrderDialog(QDialog):
         
         # Unit Price
         self.unit_price_input = QDoubleSpinBox()
-        self.unit_price_input.setRange(0.000, 999999.999)
-        self.unit_price_input.setDecimals(3)
+        self.unit_price_input.setRange(0.000001, 999999.99999999)
+        self.unit_price_input.setDecimals(8)
         self.unit_price_input.setValue(0.000)
         self.unit_price_input.setSuffix(" BHD")
         self.unit_price_input.valueChanged.connect(self.calculate_totals)

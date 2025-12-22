@@ -217,6 +217,18 @@ class ReportsWidget(QWidget):
         self.load_product_filter()
         filter_layout.addWidget(self.coupon_product_filter, 1, 3)
         
+        # Medical Centre filter
+        filter_layout.addWidget(QLabel("Medical Centre:"), 2, 0)
+        self.coupon_medical_centre_filter = QComboBox()
+        self.load_medical_centre_filter()
+        filter_layout.addWidget(self.coupon_medical_centre_filter, 2, 1)
+        
+        # Distribution Location filter
+        filter_layout.addWidget(QLabel("Distribution:"), 2, 2)
+        self.coupon_distribution_filter = QComboBox()
+        self.load_distribution_filter()
+        filter_layout.addWidget(self.coupon_distribution_filter, 2, 3)
+        
         layout.addWidget(filter_frame)
         
         # Controls
@@ -630,6 +642,28 @@ class ReportsWidget(QWidget):
         except Exception as e:
             print(f"Error loading product filter: {e}")
     
+    def load_medical_centre_filter(self):
+        """Load medical centres into filter dropdown."""
+        try:
+            centres = self.db_manager.get_all(MedicalCentre)
+            self.coupon_medical_centre_filter.clear()
+            self.coupon_medical_centre_filter.addItem("All Centres", None)
+            for centre in centres:
+                self.coupon_medical_centre_filter.addItem(centre.name, centre.id)
+        except Exception as e:
+            print(f"Error loading medical centre filter: {e}")
+    
+    def load_distribution_filter(self):
+        """Load distribution locations into filter dropdown."""
+        try:
+            locations = self.db_manager.get_all(DistributionLocation)
+            self.coupon_distribution_filter.clear()
+            self.coupon_distribution_filter.addItem("All Locations", None)
+            for location in locations:
+                self.coupon_distribution_filter.addItem(location.name, location.id)
+        except Exception as e:
+            print(f"Error loading distribution filter: {e}")
+    
     def generate_stock_report(self):
         """Generate comprehensive stock and distribution report."""
         try:
@@ -919,6 +953,8 @@ class ReportsWidget(QWidget):
             date_to = self.coupon_date_to.date().toPyDate()
             status_filter = self.coupon_status_filter.currentText()
             product_id = self.coupon_product_filter.currentData()
+            medical_centre_id = self.coupon_medical_centre_filter.currentData()
+            distribution_id = self.coupon_distribution_filter.currentData()
             
             # Get all coupons
             all_coupons = self.db_manager.get_all(PatientCoupon)
@@ -939,6 +975,14 @@ class ReportsWidget(QWidget):
                 
                 # Product filter
                 if product_id and coupon.product_id != product_id:
+                    continue
+                
+                # Medical Centre filter
+                if medical_centre_id and coupon.medical_centre_id != medical_centre_id:
+                    continue
+                
+                # Distribution Location filter
+                if distribution_id and coupon.distribution_location_id != distribution_id:
                     continue
                 
                 filtered_coupons.append(coupon)
