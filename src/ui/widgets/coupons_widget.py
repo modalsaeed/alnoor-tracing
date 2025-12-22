@@ -216,10 +216,10 @@ class CouponsWidget(QWidget):
         
         # Table
         self.table = QTableWidget()
-        self.table.setColumnCount(10)
+        self.table.setColumnCount(12)
         self.table.setHorizontalHeaderLabels([
             "ID", "Patient Name", "CPR", "Product", "Quantity",
-            "MOH Health Centre", "Distribution", "Date", "Status", "Verification Ref"
+            "MOH Health Centre", "Distribution", "Date", "DN Number", "GRV Reference", "Status", "Verification Ref"
         ])
         
         # Configure table
@@ -232,8 +232,10 @@ class CouponsWidget(QWidget):
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)  # Medical Centre
         header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)  # Distribution
         header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)  # Date
-        header.setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents)  # Status
-        header.setSectionResizeMode(9, QHeaderView.ResizeMode.Stretch)  # Verification Ref
+        header.setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)  # DN Number
+        header.setSectionResizeMode(9, QHeaderView.ResizeMode.Stretch)  # GRV Reference
+        header.setSectionResizeMode(10, QHeaderView.ResizeMode.ResizeToContents)  # Status
+        header.setSectionResizeMode(11, QHeaderView.ResizeMode.Stretch)  # Verification Ref
         
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -398,6 +400,18 @@ class CouponsWidget(QWidget):
             date_str = coupon_date.strftime("%Y-%m-%d")
             self.table.setItem(row, 7, QTableWidgetItem(date_str))
             
+            # DN Number
+            dn_number = coupon.delivery_note_number or "-"
+            self.table.setItem(row, 8, QTableWidgetItem(dn_number))
+            
+            # GRV Reference
+            grv_ref = coupon.grv_reference or "-"
+            grv_item = QTableWidgetItem(grv_ref)
+            if coupon.grv_reference:
+                grv_item.setBackground(QColor(Colors.ALERT_SUCCESS_BG))
+                grv_item.setForeground(QColor(Colors.SUCCESS))
+            self.table.setItem(row, 9, grv_item)
+            
             # Status (with color coding)
             status_text = f"{IconStyles.VERIFIED} Verified" if coupon.verified else f"{IconStyles.PENDING} Pending"
             status_item = QTableWidgetItem(status_text)
@@ -408,11 +422,11 @@ class CouponsWidget(QWidget):
             else:
                 status_item.setBackground(QColor(Colors.ALERT_WARNING_BG))
                 status_item.setForeground(QColor(Colors.WARNING))
-            self.table.setItem(row, 8, status_item)
+            self.table.setItem(row, 10, status_item)
             
             # Verification Reference
             ver_ref = coupon.verification_reference or "-"
-            self.table.setItem(row, 9, QTableWidgetItem(ver_ref))
+            self.table.setItem(row, 11, QTableWidgetItem(ver_ref))
     
     def update_statistics(self):
         """Update statistics label."""

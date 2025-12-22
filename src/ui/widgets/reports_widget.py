@@ -362,6 +362,25 @@ class ReportsWidget(QWidget):
             }
         """)
         generate_button_layout.addWidget(generate_dn_btn)
+        
+        dn_copies_btn = QPushButton("📋 DN Copies Report")
+        dn_copies_btn.clicked.connect(self.open_dn_copies_report_dialog)
+        dn_copies_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                padding: 15px 30px;
+                border: none;
+                border-radius: 6px;
+                font-weight: bold;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+        """)
+        generate_button_layout.addWidget(dn_copies_btn)
+        
         generate_button_layout.addStretch()
         
         layout.addLayout(generate_button_layout)
@@ -404,6 +423,13 @@ class ReportsWidget(QWidget):
         if dialog.exec():
             # Refresh recent delivery notes list
             self.load_recent_delivery_notes()
+    
+    def open_dn_copies_report_dialog(self):
+        """Open the DN Copies Report dialog."""
+        from src.ui.dialogs.dn_copies_report_dialog import DNcopiesReportDialog
+        
+        dialog = DNcopiesReportDialog(self.db_manager, parent=self)
+        dialog.exec()
     
     def load_recent_delivery_notes(self):
         """Load recent delivery notes from the database."""

@@ -20,8 +20,9 @@ from PyQt6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QHeaderView,
+    QDateEdit,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QFont
 
 from src.database.db_manager import DatabaseManager
@@ -125,6 +126,52 @@ class VerifyCouponDialog(QDialog):
         )
         layout.addWidget(self.delivery_note_input)
         
+        layout.addSpacing(10)
+        
+        # Delivery Note Date section (MANDATORY)
+        dn_date_label = QLabel("📅 Delivery Note Date *")
+        dn_date_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #2c3e50;")
+        layout.addWidget(dn_date_label)
+        
+        dn_date_note = QLabel(
+            "Select the date when the delivery note was issued/received."
+        )
+        dn_date_note.setStyleSheet("color: #7f8c8d; font-size: 11px; font-style: italic;")
+        dn_date_note.setWordWrap(True)
+        layout.addWidget(dn_date_note)
+        
+        self.dn_date_input = QDateEdit()
+        self.dn_date_input.setCalendarPopup(True)
+        self.dn_date_input.setDate(QDate.currentDate())
+        self.dn_date_input.setStyleSheet(
+            """
+            QDateEdit {
+                padding: 10px; 
+                font-size: 14px; 
+                border: 2px solid #9b59b6; 
+                border-radius: 4px;
+            }
+            QCalendarWidget QWidget#qt_calendar_navigationbar {
+                background-color: #9b59b6;
+            }
+            QCalendarWidget QToolButton {
+                color: white;
+                font-weight: bold;
+                background-color: transparent;
+            }
+            QCalendarWidget QMenu {
+                background-color: white;
+                color: black;
+            }
+            QCalendarWidget QSpinBox {
+                color: white;
+                font-weight: bold;
+                background-color: transparent;
+            }
+            """
+        )
+        layout.addWidget(self.dn_date_input)
+        
         layout.addSpacing(20)
         
         # Buttons
@@ -206,6 +253,10 @@ class VerifyCouponDialog(QDialog):
             self.delivery_note_input.setFocus()
             return
         
+        # Get delivery note date
+        dn_date = self.dn_date_input.date().toPyDate()
+        dn_date_dt = datetime.combine(dn_date, datetime.min.time())
+        
         # Build confirmation message
         coupon_list = "\n".join([
             f"  • {c.patient_name or 'N/A'} ({c.cpr or 'N/A'}) - {c.product.name if c.product else 'Unknown'} - {c.quantity_pieces} pieces"
@@ -236,23 +287,31 @@ class VerifyCouponDialog(QDialog):
             verification_ref = verification_ref.upper()
             delivery_note = delivery_note.upper()
             
-            # Process each coupon
+            # Process all coupons in a single transaction
             verified_count = 0
             failed_coupons = []
             
-            for coupon in self.coupons:
-                try:
-                    # Update coupon verification status and delivery note
-                    coupon.verified = True
-                    coupon.verification_reference = verification_ref
-                    coupon.delivery_note_number = delivery_note
-                    coupon.date_verified = datetime.now()
-                    
-                    self.db_manager.update(coupon)
-                    verified_count += 1
-                    
-                except Exception as e:
-                    failed_coupons.append(f"{coupon.coupon_reference}: {str(e)}")
+            with self.db_manager.get_session() as session:
+                for coupon in self.coupons:
+                    try:
+                        # Get coupon from session
+                        db_coupon = session.query(PatientCoupon).get(coupon.id)
+                        if not db_coupon:
+                            failed_coupons.append(f"{coupon.id}: Coupon not found in database")
+                            continue
+                        
+                        # Update coupon verification status and delivery note
+                        db_coupon.verified = True
+                        db_coupon.verification_reference = verification_ref
+                        db_coupon.delivery_note_number = delivery_note
+                        db_coupon.date_verified = datetime.now()
+                        
+                        verified_count += 1
+                        
+                    except Exception as e:
+                        failed_coupons.append(f"{coupon.id}: {str(e)}")
+                
+                # Commit happens automatically when exiting the context manager
             
             # Show results
             if verified_count == len(self.coupons):
