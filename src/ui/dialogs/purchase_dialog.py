@@ -403,9 +403,13 @@ class PurchaseDialog(QDialog):
                     
                     # Adjust PO remaining stock
                     po.remaining_stock -= quantity_diff
+                    print(f"DEBUG: [EDIT] Adjusted PO {po.id} stock by {quantity_diff}, new remaining: {po.remaining_stock}")
                     
                 else:
                     # Create new purchase
+                    print(f"DEBUG: Creating new purchase from PO {po_id}, quantity={quantity}")
+                    print(f"DEBUG: PO {po.id} stock BEFORE: {po.remaining_stock}")
+                    
                     purchase = Purchase(
                         invoice_number=invoice_number,
                         purchase_order_id=po_id,
@@ -421,17 +425,40 @@ class PurchaseDialog(QDialog):
                     
                     # Reduce PO remaining stock
                     po.remaining_stock -= quantity
+                    print(f"DEBUG: PO {po.id} stock AFTER: {po.remaining_stock}")
                     
                     session.add(purchase)
+                    print(f"DEBUG: Added purchase to session")
+                    
+                    # Flush to get IDs
+                    session.flush()
+                    purchase_id = purchase.id
+                    print(f"DEBUG: Flushed, purchase ID: {purchase_id}")
                 
-                session.commit()
+            # Context manager will commit here
+            print(f"DEBUG: Exited context manager, should have committed")
+            
+            # Verify the changes were saved
+            with self.db_manager.get_session() as verify_session:
+                saved_po = verify_session.query(PurchaseOrder).get(po_id)
+                if saved_po:
+                    print(f"DEBUG: ✓ PO {po_id} verified - remaining stock: {saved_po.remaining_stock}")
+                else:
+                    print(f"DEBUG: ✗ PO {po_id} NOT FOUND in database!")
                 
-                QMessageBox.information(
-                    self,
-                    "Success",
-                    f"Purchase {invoice_number} {'updated' if self.is_edit_mode else 'created'} successfully!"
-                )
-                self.accept()
+                if not self.is_edit_mode:
+                    saved_purchase = verify_session.query(Purchase).get(purchase_id)
+                    if saved_purchase:
+                        print(f"DEBUG: ✓ Purchase {purchase_id} verified in database")
+                    else:
+                        print(f"DEBUG: ✗ Purchase {purchase_id} NOT FOUND in database!")
+            
+            QMessageBox.information(
+                self,
+                "Success",
+                f"Purchase {invoice_number} {'updated' if self.is_edit_mode else 'created'} successfully!"
+            )
+            self.accept()
                 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save purchase: {e}")

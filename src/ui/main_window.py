@@ -59,12 +59,12 @@ class MainWindow(QMainWindow):
         # File menu
         file_menu = menubar.addMenu('&File')
         
-        backup_action = QAction('&Backup Database', self)
+        backup_action = QAction('💾 &Backup Database', self)
         backup_action.setShortcut('Ctrl+B')
         backup_action.triggered.connect(self.backup_database)
         file_menu.addAction(backup_action)
         
-        restore_action = QAction('&Restore Database', self)
+        restore_action = QAction('🔄 &Restore Database', self)
         restore_action.triggered.connect(self.restore_database)
         file_menu.addAction(restore_action)
         
@@ -74,6 +74,14 @@ class MainWindow(QMainWindow):
         exit_action.setShortcut('Ctrl+Q')
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
+        
+        # Tools menu
+        tools_menu = menubar.addMenu('&Tools')
+        
+        undo_verification_action = QAction('⏮️ &Undo Verification', self)
+        undo_verification_action.setShortcut('Ctrl+Z')
+        undo_verification_action.triggered.connect(self.undo_verification)
+        tools_menu.addAction(undo_verification_action)
         
         # Help menu
         help_menu = menubar.addMenu('&Help')
@@ -197,57 +205,31 @@ class MainWindow(QMainWindow):
         self.move(x, y)
     
     def backup_database(self):
-        """Create database backup."""
-        try:
-            backup_path = self.db_manager.create_backup()
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.information(
-                self,
-                "Backup Successful",
-                f"Database backed up successfully to:\n{backup_path}"
-            )
-        except Exception as e:
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.critical(
-                self,
-                "Backup Failed",
-                f"Failed to create backup:\n{str(e)}"
-            )
+        """Open backup dialog."""
+        from src.ui.dialogs.backup_dialog import BackupDialog
+        
+        dialog = BackupDialog(self.db_manager, self)
+        dialog.exec()
     
     def restore_database(self):
-        """Restore database from backup."""
-        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        """Open backup dialog for restore."""
+        from src.ui.dialogs.backup_dialog import BackupDialog
         
-        backup_file, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select Backup File",
-            "",
-            "Database Files (*.db)"
-        )
+        dialog = BackupDialog(self.db_manager, self)
+        dialog.exec()
+    
+    def undo_verification(self):
+        """Open undo verification dialog."""
+        from src.ui.dialogs.undo_verification_dialog import UndoVerificationDialog
         
-        if backup_file:
-            reply = QMessageBox.question(
-                self,
-                "Confirm Restore",
-                "Are you sure you want to restore from this backup?\n"
-                "Current database will be backed up first.",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            
-            if reply == QMessageBox.StandardButton.Yes:
-                try:
-                    self.db_manager.restore_backup(backup_file)
-                    QMessageBox.information(
-                        self,
-                        "Restore Successful",
-                        "Database restored successfully.\nPlease restart the application."
-                    )
-                except Exception as e:
-                    QMessageBox.critical(
-                        self,
-                        "Restore Failed",
-                        f"Failed to restore backup:\n{str(e)}"
-                    )
+        dialog = UndoVerificationDialog(self.db_manager, self)
+        if dialog.exec():
+            # Refresh coupons tab if it exists
+            for i in range(self.tabs.count()):
+                widget = self.tabs.widget(i)
+                if hasattr(widget, 'load_coupons'):
+                    widget.load_coupons()
+                    break
     
     def show_about(self):
         """Show about dialog."""
@@ -269,24 +251,36 @@ class MainWindow(QMainWindow):
         
         # Get the current widget
         current_widget = self.tabs.widget(index)
+        tab_name = self.tabs.tabText(index)
+        print(f"DEBUG: Tab changed to: {tab_name}")
         
         # Call refresh/load method if available
         if hasattr(current_widget, 'load_data'):
+            print(f"DEBUG: Calling load_data() on {tab_name}")
             current_widget.load_data()
         elif hasattr(current_widget, 'refresh'):
+            print(f"DEBUG: Calling refresh() on {tab_name}")
             current_widget.refresh()
         elif hasattr(current_widget, 'load_coupons'):
+            print(f"DEBUG: Calling load_coupons() on {tab_name}")
             current_widget.load_coupons()
         elif hasattr(current_widget, 'load_transactions'):
+            print(f"DEBUG: Calling load_transactions() on {tab_name}")
             current_widget.load_transactions()
         elif hasattr(current_widget, 'load_purchase_orders'):
+            print(f"DEBUG: Calling load_purchase_orders() on {tab_name}")
             current_widget.load_purchase_orders()
         elif hasattr(current_widget, 'load_products'):
+            print(f"DEBUG: Calling load_products() on {tab_name}")
             current_widget.load_products()
         elif hasattr(current_widget, 'load_medical_centres'):
+            print(f"DEBUG: Calling load_medical_centres() on {tab_name}")
             current_widget.load_medical_centres()
         elif hasattr(current_widget, 'load_distribution_locations'):
+            print(f"DEBUG: Calling load_distribution_locations() on {tab_name}")
             current_widget.load_distribution_locations()
+        else:
+            print(f"DEBUG: No refresh method found for {tab_name}")
     
     def closeEvent(self, event):
         """Handle window close event."""

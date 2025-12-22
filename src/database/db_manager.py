@@ -60,29 +60,35 @@ class DatabaseManager:
             return  # Already initialized
         
         if db_path is None:
-            # Determine if running as frozen executable (PyInstaller) or as script
-            if getattr(sys, 'frozen', False):
-                # Running as compiled executable
-                # Use user's AppData directory for database
-                app_name = 'Alnoor Medical Services'
-                if sys.platform == 'win32':
-                    # Windows: Use LOCALAPPDATA
-                    app_data = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
-                    data_dir = app_data / app_name / 'database'
-                elif sys.platform == 'darwin':
-                    # macOS: Use ~/Library/Application Support
-                    data_dir = Path.home() / 'Library' / 'Application Support' / app_name / 'database'
-                else:
-                    # Linux: Use ~/.local/share
-                    data_dir = Path.home() / '.local' / 'share' / app_name / 'database'
+            # Check for test database environment variable
+            test_db = os.environ.get('ALNOOR_TEST_DB')
+            if test_db:
+                db_path = test_db
+                print(f"Using TEST database: {db_path}")
             else:
-                # Running as script in development
-                # Use data/ folder in project root
-                project_root = Path(__file__).parent.parent.parent
-                data_dir = project_root / 'data'
-            
-            data_dir.mkdir(parents=True, exist_ok=True)
-            db_path = str(data_dir / 'alnoor.db')
+                # Determine if running as frozen executable (PyInstaller) or as script
+                if getattr(sys, 'frozen', False):
+                    # Running as compiled executable
+                    # Use user's AppData directory for database
+                    app_name = 'Alnoor Medical Services'
+                    if sys.platform == 'win32':
+                        # Windows: Use LOCALAPPDATA
+                        app_data = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
+                        data_dir = app_data / app_name / 'database'
+                    elif sys.platform == 'darwin':
+                        # macOS: Use ~/Library/Application Support
+                        data_dir = Path.home() / 'Library' / 'Application Support' / app_name / 'database'
+                    else:
+                        # Linux: Use ~/.local/share
+                        data_dir = Path.home() / '.local' / 'share' / app_name / 'database'
+                else:
+                    # Running as script in development
+                    # Use data/ folder in project root
+                    project_root = Path(__file__).parent.parent.parent
+                    data_dir = project_root / 'data'
+                
+                data_dir.mkdir(parents=True, exist_ok=True)
+                db_path = str(data_dir / 'alnoor.db')
         
         self.db_path = db_path
         self._initialize_engine()
@@ -96,13 +102,20 @@ class DatabaseManager:
             echo=False,  # Set to True for SQL query debugging
             future=True,
             pool_pre_ping=True,
+            connect_args={
+                'timeout': 30,  # 30 second timeout for locked database
+                'check_same_thread': False,  # Allow multi-threaded access
+            },
         )
         
-        # Enable foreign key constraints for SQLite
+        # Enable foreign key constraints and WAL mode for SQLite
         @event.listens_for(Engine, "connect")
         def set_sqlite_pragma(dbapi_conn, connection_record):
             cursor = dbapi_conn.cursor()
             cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging for better concurrency
+            cursor.execute("PRAGMA busy_timeout=30000")  # 30 second busy timeout
+            cursor.execute("PRAGMA synchronous=NORMAL")  # Balance safety and performance
             cursor.close()
         
         # Create session factory
@@ -548,6 +561,113 @@ class DatabaseManager:
         """Execute a raw SQL query (use with caution)."""
         with self._engine.connect() as conn:
             return conn.execute(query)
+    
+    def create_backup(self, backup_path: Optional[str] = None) -> str:
+        """
+        Create a backup of the database.
+        
+        Args:
+            backup_path: Optional custom backup path. If None, creates backup in backups folder.
+            
+        Returns:
+            Path to the created backup file.
+        """
+        if backup_path is None:
+            # Create backups folder next to database
+            db_dir = Path(self.db_path).parent
+            backups_dir = db_dir / 'backups'
+            backups_dir.mkdir(exist_ok=True)
+            
+            # Create timestamped backup filename
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            backup_path = str(backups_dir / f'alnoor_backup_{timestamp}.db')
+        
+        # Close any active connections and copy database file
+        try:
+            # Ensure all pending transactions are committed
+            if self._engine:
+                self._engine.dispose()
+            
+            # Copy database file
+            shutil.copy2(self.db_path, backup_path)
+            
+            # Reinitialize engine after backup
+            self._initialize_engine()
+            
+            return backup_path
+        except Exception as e:
+            # Reinitialize engine even if backup fails
+            if self._engine is None:
+                self._initialize_engine()
+            raise Exception(f"Failed to create backup: {str(e)}")
+    
+    def restore_backup(self, backup_path: str) -> bool:
+        """
+        Restore database from a backup file.
+        
+        Args:
+            backup_path: Path to the backup file.
+            
+        Returns:
+            True if restore was successful.
+        """
+        if not os.path.exists(backup_path):
+            raise FileNotFoundError(f"Backup file not found: {backup_path}")
+        
+        try:
+            # Close all connections
+            if self._engine:
+                self._engine.dispose()
+            
+            # Create a backup of current database before restoring
+            current_backup = self.db_path + '.before_restore'
+            shutil.copy2(self.db_path, current_backup)
+            
+            # Restore from backup
+            shutil.copy2(backup_path, self.db_path)
+            
+            # Reinitialize engine
+            self._initialize_engine()
+            
+            return True
+        except Exception as e:
+            # Try to restore the pre-restore backup if restore failed
+            if os.path.exists(current_backup):
+                shutil.copy2(current_backup, self.db_path)
+            
+            # Reinitialize engine
+            if self._engine is None:
+                self._initialize_engine()
+            
+            raise Exception(f"Failed to restore backup: {str(e)}")
+    
+    def list_backups(self) -> List[dict]:
+        """
+        List all available backups.
+        
+        Returns:
+            List of dictionaries containing backup information.
+        """
+        db_dir = Path(self.db_path).parent
+        backups_dir = db_dir / 'backups'
+        
+        if not backups_dir.exists():
+            return []
+        
+        backups = []
+        for backup_file in backups_dir.glob('alnoor_backup_*.db'):
+            stat = backup_file.stat()
+            backups.append({
+                'path': str(backup_file),
+                'name': backup_file.name,
+                'size_mb': stat.st_size / (1024 * 1024),
+                'created_at': datetime.fromtimestamp(stat.st_ctime),
+                'modified_at': datetime.fromtimestamp(stat.st_mtime),
+            })
+        
+        # Sort by creation time, newest first
+        backups.sort(key=lambda x: x['created_at'], reverse=True)
+        return backups
     
     def get_database_info(self) -> dict:
         """Get information about the database."""

@@ -334,6 +334,14 @@ class TransactionDialog(QDialog):
             with self.db_manager.get_session() as session:
                 # Get purchase and validate stock
                 purchase = session.query(Purchase).get(purchase_id)
+                if not purchase:
+                    QMessageBox.critical(
+                        self,
+                        "Error",
+                        f"Purchase with ID {purchase_id} not found."
+                    )
+                    return
+                
                 if purchase.remaining_stock < quantity:
                     QMessageBox.critical(
                         self,
@@ -352,26 +360,50 @@ class TransactionDialog(QDialog):
                     transaction_date=transaction_date
                 )
                 
+                print(f"DEBUG: Creating transaction with location_id={location_id}, purchase_id={purchase_id}, quantity={quantity}")
+                
                 # Reduce purchase stock
                 purchase.remaining_stock -= quantity
+                print(f"DEBUG: Reduced purchase stock to {purchase.remaining_stock}")
                 
+                # Add transaction to session
                 session.add(transaction)
-                session.commit()
+                print(f"DEBUG: Added transaction to session")
                 
-                QMessageBox.information(
-                    self,
-                    "Transaction Created",
-                    f"✅ Transaction created successfully!\n\n"
-                    f"Transaction Reference: {reference}\n"
-                    f"Transaction ID: {transaction.id}\n\n"
-                    f"Stock has been updated."
-                )
-                self.accept()
+                # Flush to get the transaction ID without committing
+                session.flush()
+                transaction_id = transaction.id
+                print(f"DEBUG: Flushed, transaction ID: {transaction_id}")
+                
+            # Context manager will commit here
+            print(f"DEBUG: Exited context manager, should have committed")
+            
+            # Verify the transaction was saved
+            with self.db_manager.get_session() as verify_session:
+                saved_txn = verify_session.query(Transaction).get(transaction_id)
+                if saved_txn:
+                    print(f"DEBUG: ✓ Transaction {transaction_id} verified in database")
+                    print(f"DEBUG:   - Location ID: {saved_txn.distribution_location_id}")
+                    print(f"DEBUG:   - Quantity: {saved_txn.quantity}")
+                else:
+                    print(f"DEBUG: ✗ Transaction {transaction_id} NOT FOUND in database!")
+            
+            QMessageBox.information(
+                self,
+                "Transaction Created",
+                f"✅ Transaction created successfully!\n\n"
+                f"Transaction Reference: {reference}\n"
+                f"Transaction ID: {transaction_id}\n\n"
+                f"Stock has been updated."
+            )
+            self.accept()
             
         except Exception as e:
             QMessageBox.critical(
                 self,
                 "Error",
-                f"Failed to create transaction:\n{str(e)}"
+                f"Failed to create transaction:\n{str(e)}\n\n"
+                f"Purchase stock has NOT been deducted."
             )
+
 
