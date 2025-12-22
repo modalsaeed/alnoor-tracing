@@ -61,7 +61,13 @@ class DistributionLocationDialog(QDialog):
         # Location Reference
         self.reference_input = QLineEdit()
         self.reference_input.setPlaceholderText("Enter unique reference (e.g., LOC-001)")
-        form_layout.addRow("Reference: *", self.reference_input)
+        form_layout.addRow("Reference:", self.reference_input)
+        
+        # TRN (Tax Registration Number)
+        self.trn_input = QLineEdit()
+        self.trn_input.setPlaceholderText("Enter Tax Registration Number")
+        self.trn_input.setMaxLength(100)
+        form_layout.addRow("TRN:", self.trn_input)
         
         # Pharmacy (optional grouping)
         self.pharmacy_combo = QComboBox()
@@ -138,7 +144,11 @@ class DistributionLocationDialog(QDialog):
         """Populate form fields with existing location data."""
         if self.location:
             self.name_input.setText(self.location.name)
-            self.reference_input.setText(self.location.reference)
+            if self.location.reference:
+                self.reference_input.setText(self.location.reference)
+            
+            if hasattr(self.location, 'trn') and self.location.trn:
+                self.trn_input.setText(self.location.trn)
             
             # Set pharmacy if assigned
             if self.location.pharmacy_id:
@@ -164,6 +174,7 @@ class DistributionLocationDialog(QDialog):
         # Sanitize inputs
         name = sanitize_input(self.name_input.text())
         reference = sanitize_input(self.reference_input.text())
+        trn = sanitize_input(self.trn_input.text()) if hasattr(self, 'trn_input') else ""
         phone = sanitize_input(self.phone_input.text()) if hasattr(self, 'phone_input') else ""
         
         # Validate location name
@@ -171,10 +182,11 @@ class DistributionLocationDialog(QDialog):
         if not is_valid:
             return False, error_msg
         
-        # Validate location reference
-        is_valid, error_msg = validate_reference(reference, min_length=2)
-        if not is_valid:
-            return False, f"Location reference error: {error_msg}"
+        # Validate location reference if provided
+        if reference:
+            is_valid, error_msg = validate_reference(reference, min_length=2)
+            if not is_valid:
+                return False, f"Location reference error: {error_msg}"
         
         # Validate phone if provided
         if phone:
@@ -182,13 +194,14 @@ class DistributionLocationDialog(QDialog):
             if not is_valid:
                 return False, f"Phone error: {error_msg}"
         
-        # Normalize reference
-        reference_normalized = normalize_reference(reference)
-        
-        # Check for duplicate reference
-        if not self.is_edit_mode or (self.location and reference_normalized != self.location.reference):
-            if self.is_reference_duplicate(reference_normalized):
-                return False, f"Reference '{reference_normalized}' already exists. Please use a unique reference."
+        # Normalize reference if provided
+        if reference:
+            reference_normalized = normalize_reference(reference)
+            
+            # Check for duplicate reference
+            if not self.is_edit_mode or (self.location and reference_normalized != self.location.reference):
+                if self.is_reference_duplicate(reference_normalized):
+                    return False, f"Reference '{reference_normalized}' already exists. Please use a unique reference."
         
         return True, ""
     
@@ -214,6 +227,7 @@ class DistributionLocationDialog(QDialog):
         try:
             name = self.name_input.text().strip()
             reference = self.reference_input.text().strip()
+            trn = self.trn_input.text().strip() if hasattr(self, 'trn_input') else None
             address = self.address_input.toPlainText().strip()
             contact_person = self.contact_input.text().strip()
             phone = self.phone_input.text().strip()
@@ -224,7 +238,9 @@ class DistributionLocationDialog(QDialog):
             if self.is_edit_mode:
                 # Update existing location
                 self.location.name = name
-                self.location.reference = reference.upper()
+                self.location.reference = reference.upper() if reference else None
+                if hasattr(self.location, 'trn'):
+                    self.location.trn = trn if trn else None
                 self.location.address = address if address else None
                 self.location.contact_person = contact_person if contact_person else None
                 self.location.phone = phone if phone else None
@@ -240,7 +256,8 @@ class DistributionLocationDialog(QDialog):
                 # Create new location
                 new_location = DistributionLocation(
                     name=name,
-                    reference=reference.upper(),
+                    reference=reference.upper() if reference else None,
+                    trn=trn if trn else None,
                     address=address if address else None,
                     contact_person=contact_person if contact_person else None,
                     phone=phone if phone else None,

@@ -64,9 +64,9 @@ class TransactionDialog(QDialog):
         
         # Transaction Reference
         self.reference_input = QLineEdit()
-        self.reference_input.setPlaceholderText("e.g., TRX-2024-001")
+        self.reference_input.setPlaceholderText("e.g., TRX-2024-001 (optional)")
         self.reference_input.setMaxLength(100)
-        form_layout.addRow("Transaction Reference: *", self.reference_input)
+        form_layout.addRow("Transaction Reference:", self.reference_input)
         
         # Product Selection
         self.product_combo = QComboBox()
@@ -86,7 +86,7 @@ class TransactionDialog(QDialog):
         self.quantity_input = QSpinBox()
         self.quantity_input.setRange(1, 999999)
         self.quantity_input.setValue(1)
-        self.quantity_input.setSuffix(" pieces")
+        self.quantity_input.setSuffix(" Unit")
         form_layout.addRow("Quantity: *", self.quantity_input)
         
         # Transaction Date
@@ -248,12 +248,12 @@ class TransactionDialog(QDialog):
         """Validate all input fields."""
         # Transaction reference
         reference = self.reference_input.text().strip()
-        if not reference:
-            return False, "Transaction reference is required"
         
-        is_valid, error_msg = validate_reference(reference, min_length=2, max_length=100)
-        if not is_valid:
-            return False, error_msg
+        # Validate reference format if provided (reference is optional)
+        if reference:
+            is_valid, error_msg = validate_reference(reference, min_length=2, max_length=100)
+            if not is_valid:
+                return False, error_msg
         
         # Product
         product_id = self.product_combo.currentData()
@@ -344,7 +344,7 @@ class TransactionDialog(QDialog):
                 
                 # Create transaction
                 transaction = Transaction(
-                    transaction_reference=reference,
+                    transaction_reference=reference if reference else None,
                     purchase_id=purchase_id,
                     product_id=product_id,
                     distribution_location_id=location_id,

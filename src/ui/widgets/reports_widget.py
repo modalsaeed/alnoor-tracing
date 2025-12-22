@@ -28,7 +28,10 @@ from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QColor
 
 from src.database.db_manager import DatabaseManager
-from src.database.models import Product, PurchaseOrder, PatientCoupon, MedicalCentre, DistributionLocation
+from src.database.models import (
+    Product, PurchaseOrder, Purchase, Transaction, PatientCoupon, 
+    MedicalCentre, DistributionLocation, Pharmacy
+)
 from src.services.stock_service import StockService
 
 
@@ -60,6 +63,7 @@ class ReportsWidget(QWidget):
         # Add report tabs
         self.report_tabs.addTab(self.create_stock_report_tab(), "📦 Stock Report")
         self.report_tabs.addTab(self.create_coupon_report_tab(), "🎫 Coupon Report")
+        self.report_tabs.addTab(self.create_delivery_note_tab(), "📄 Delivery Notes")
         self.report_tabs.addTab(self.create_activity_report_tab(), "📅 Activity Report")
         self.report_tabs.addTab(self.create_summary_report_tab(), "📈 Summary Statistics")
         
@@ -71,18 +75,37 @@ class ReportsWidget(QWidget):
         layout = QVBoxLayout(widget)
         
         # Header
-        header = QLabel("📦 Stock Inventory Report")
+        header = QLabel("📦 Stock & Distribution Report")
         header.setStyleSheet("font-size: 16px; font-weight: bold; color: #2c3e50;")
         layout.addWidget(header)
         
-        info = QLabel("View current stock levels across all products and purchase orders")
+        info = QLabel("View stock levels, remaining purchases, and pharmacy distributions within a date range")
         info.setStyleSheet("color: #7f8c8d; margin-bottom: 10px;")
         layout.addWidget(info)
+        
+        # Date range filter
+        filter_layout = QHBoxLayout()
+        filter_layout.addWidget(QLabel("Date Range:"))
+        
+        self.stock_date_from = QDateEdit()
+        self.stock_date_from.setCalendarPopup(True)
+        self.stock_date_from.setDate(QDate.currentDate().addMonths(-1))
+        filter_layout.addWidget(self.stock_date_from)
+        
+        filter_layout.addWidget(QLabel("to"))
+        
+        self.stock_date_to = QDateEdit()
+        self.stock_date_to.setCalendarPopup(True)
+        self.stock_date_to.setDate(QDate.currentDate())
+        filter_layout.addWidget(self.stock_date_to)
+        
+        filter_layout.addStretch()
+        layout.addLayout(filter_layout)
         
         # Controls
         controls_layout = QHBoxLayout()
         
-        generate_btn = QPushButton("🔄 Generate Stock Report")
+        generate_btn = QPushButton("🔄 Generate Report")
         generate_btn.clicked.connect(self.generate_stock_report)
         generate_btn.setStyleSheet("""
             QPushButton {
@@ -131,16 +154,16 @@ class ReportsWidget(QWidget):
         self.stock_table = QTableWidget()
         self.stock_table.setColumnCount(6)
         self.stock_table.setHorizontalHeaderLabels([
-            "Product", "Reference", "Total Ordered", "Remaining", "Used", "Status"
+            "Category", "Item", "Quantity", "Unit Price (BHD)", "Total Price (BHD)", "Notes"
         ])
         
-        header = self.stock_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        header_view = self.stock_table.horizontalHeader()
+        header_view.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header_view.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header_view.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header_view.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header_view.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header_view.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
         
         self.stock_table.setAlternatingRowColors(True)
         layout.addWidget(self.stock_table)
@@ -267,6 +290,160 @@ class ReportsWidget(QWidget):
         layout.addWidget(self.coupon_table)
         
         return widget
+    
+    def create_delivery_note_tab(self) -> QWidget:
+        """Create delivery note generation tab."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        # Header
+        header = QLabel("📄 Delivery Note Generator")
+        header.setStyleSheet("font-size: 16px; font-weight: bold; color: #2c3e50;")
+        layout.addWidget(header)
+        
+        info = QLabel(
+            "Generate delivery notes from unverified coupons. "
+            "Delivery notes are saved as Excel files with auto-incremented reference numbers."
+        )
+        info.setStyleSheet("color: #7f8c8d; margin-bottom: 15px;")
+        info.setWordWrap(True)
+        layout.addWidget(info)
+        
+        # Instructions
+        instructions_frame = QFrame()
+        instructions_frame.setStyleSheet(
+            "QFrame { background-color: #e8f5e9; border-radius: 4px; padding: 15px; }"
+        )
+        instructions_layout = QVBoxLayout(instructions_frame)
+        
+        instructions_title = QLabel("📋 How to Generate a Delivery Note:")
+        instructions_title.setStyleSheet("font-weight: bold; color: #2e7d32; font-size: 14px;")
+        instructions_layout.addWidget(instructions_title)
+        
+        instructions_text = QLabel(
+            "1. Click 'Generate Delivery Note' button below\n"
+            "2. Select the MOH Health Centre and Distribution Location\n"
+            "3. Choose a date range for coupons\n"
+            "4. Review the filtered coupons (unverified only)\n"
+            "5. Enter pieces per carton\n"
+            "6. Click 'Generate' and choose where to save the Excel file\n\n"
+            "The delivery note will include:\n"
+            "• Auto-incremented delivery note number (DNM-00001)\n"
+            "• Health centre and product details\n"
+            "• Total pieces and cartons calculation\n"
+            "• Current date"
+        )
+        instructions_text.setStyleSheet("color: #1b5e20; margin-top: 5px; line-height: 1.5;")
+        instructions_text.setWordWrap(True)
+        instructions_layout.addWidget(instructions_text)
+        
+        layout.addWidget(instructions_frame)
+        
+        layout.addSpacing(20)
+        
+        # Generate button
+        generate_button_layout = QHBoxLayout()
+        generate_button_layout.addStretch()
+        
+        generate_dn_btn = QPushButton("📄 Generate Delivery Note")
+        generate_dn_btn.clicked.connect(self.open_delivery_note_dialog)
+        generate_dn_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #27ae60;
+                color: white;
+                padding: 15px 30px;
+                border: none;
+                border-radius: 6px;
+                font-weight: bold;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                background-color: #229954;
+            }
+        """)
+        generate_button_layout.addWidget(generate_dn_btn)
+        generate_button_layout.addStretch()
+        
+        layout.addLayout(generate_button_layout)
+        
+        layout.addStretch()
+        
+        # Recent delivery notes section
+        recent_header = QLabel("Recent Delivery Notes")
+        recent_header.setStyleSheet("font-size: 14px; font-weight: bold; color: #2c3e50; margin-top: 20px;")
+        layout.addWidget(recent_header)
+        
+        # Table for recent delivery notes
+        self.recent_dn_table = QTableWidget()
+        self.recent_dn_table.setColumnCount(5)
+        self.recent_dn_table.setHorizontalHeaderLabels([
+            "Delivery Note #", "Health Centre", "Product", "Total Pieces", "Date Created"
+        ])
+        
+        header_view = self.recent_dn_table.horizontalHeader()
+        header_view.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header_view.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header_view.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header_view.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header_view.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        
+        self.recent_dn_table.setAlternatingRowColors(True)
+        self.recent_dn_table.setMaximumHeight(200)
+        layout.addWidget(self.recent_dn_table)
+        
+        # Load recent delivery notes
+        self.load_recent_delivery_notes()
+        
+        return widget
+    
+    def open_delivery_note_dialog(self):
+        """Open the delivery note generation dialog."""
+        from src.ui.dialogs.delivery_note_dialog import DeliveryNoteDialog
+        
+        dialog = DeliveryNoteDialog(self.db_manager, parent=self)
+        if dialog.exec():
+            # Refresh recent delivery notes list
+            self.load_recent_delivery_notes()
+    
+    def load_recent_delivery_notes(self):
+        """Load recent delivery notes from the database."""
+        try:
+            with self.db_manager.get_session() as session:
+                # Get coupons with delivery notes, grouped by delivery note number
+                coupons = session.query(PatientCoupon).filter(
+                    PatientCoupon.delivery_note_number.isnot(None)
+                ).order_by(PatientCoupon.created_at.desc()).limit(100).all()
+                
+                # Group by delivery note number
+                dn_groups = {}
+                for coupon in coupons:
+                    dn_num = coupon.delivery_note_number
+                    if dn_num not in dn_groups:
+                        dn_groups[dn_num] = {
+                            'coupons': [],
+                            'date': coupon.created_at,
+                            'centre': coupon.medical_centre.name if coupon.medical_centre else "N/A",
+                            'product': coupon.product.name if coupon.product else "N/A"
+                        }
+                    dn_groups[dn_num]['coupons'].append(coupon)
+                
+                # Populate table
+                self.recent_dn_table.setRowCount(0)
+                for dn_num, data in list(dn_groups.items())[:10]:  # Show last 10
+                    row = self.recent_dn_table.rowCount()
+                    self.recent_dn_table.insertRow(row)
+                    
+                    self.recent_dn_table.setItem(row, 0, QTableWidgetItem(dn_num))
+                    self.recent_dn_table.setItem(row, 1, QTableWidgetItem(data['centre']))
+                    self.recent_dn_table.setItem(row, 2, QTableWidgetItem(data['product']))
+                    
+                    total_pieces = sum(c.quantity_pieces for c in data['coupons'])
+                    self.recent_dn_table.setItem(row, 3, QTableWidgetItem(str(total_pieces)))
+                    
+                    date_str = data['date'].strftime("%d/%m/%Y %H:%M")
+                    self.recent_dn_table.setItem(row, 4, QTableWidgetItem(date_str))
+        except Exception as e:
+            print(f"Error loading recent delivery notes: {e}")
     
     def create_activity_report_tab(self) -> QWidget:
         """Create activity report tab."""
@@ -428,78 +605,285 @@ class ReportsWidget(QWidget):
             print(f"Error loading product filter: {e}")
     
     def generate_stock_report(self):
-        """Generate stock inventory report."""
+        """Generate comprehensive stock and distribution report."""
         try:
-            stock_summary = self.stock_service.get_stock_summary()
+            date_from = self.stock_date_from.date().toPyDate()
+            date_to = self.stock_date_to.date().toPyDate()
+            date_from_dt = datetime.combine(date_from, datetime.min.time())
+            date_to_dt = datetime.combine(date_to, datetime.max.time())
             
             self.stock_table.setRowCount(0)
             
-            total_products = len(stock_summary)
-            total_ordered = sum(item['total_ordered'] for item in stock_summary)
-            total_remaining = sum(item['total_remaining'] for item in stock_summary)
-            total_used = total_ordered - total_remaining
-            
-            self.stock_summary_label.setText(
-                f"📊 Stock Summary: {total_products} products | "
-                f"Total Ordered: {total_ordered} pieces | "
-                f"Remaining: {total_remaining} pieces | "
-                f"Used: {total_used} pieces"
-            )
-            
-            for item in stock_summary:
-                row = self.stock_table.rowCount()
-                self.stock_table.insertRow(row)
+            with self.db_manager.get_session() as session:
+                # Section 1: Remaining Local Purchase Orders (non-empty only)
+                local_pos = session.query(PurchaseOrder).filter(
+                    PurchaseOrder.remaining_stock > 0
+                ).all()
                 
-                # Product name
-                self.stock_table.setItem(row, 0, QTableWidgetItem(item['product_name']))
+                if local_pos:
+                    self.add_section_header("📋 Local Purchase Orders (Remaining)")
+                    
+                    total_lpo_qty = 0
+                    total_lpo_price = 0
+                    
+                    for po in local_pos:
+                        row = self.stock_table.rowCount()
+                        self.stock_table.insertRow(row)
+                        
+                        self.stock_table.setItem(row, 0, QTableWidgetItem("Local PO"))
+                        
+                        item_name = f"{po.po_reference} - {po.product.name if po.product else 'N/A'}"
+                        self.stock_table.setItem(row, 1, QTableWidgetItem(item_name))
+                        
+                        qty_item = QTableWidgetItem(str(po.remaining_stock))
+                        qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        self.stock_table.setItem(row, 2, qty_item)
+                        
+                        unit_price = float(po.unit_price) if po.unit_price else 0
+                        unit_price_item = QTableWidgetItem(f"{unit_price:.3f}")
+                        unit_price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
+                        self.stock_table.setItem(row, 3, unit_price_item)
+                        
+                        remaining_price = unit_price * po.remaining_stock
+                        price_item = QTableWidgetItem(f"{remaining_price:.3f}")
+                        price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
+                        self.stock_table.setItem(row, 4, price_item)
+                        
+                        notes = f"Total: {po.quantity} | Used: {po.quantity - po.remaining_stock}"
+                        self.stock_table.setItem(row, 5, QTableWidgetItem(notes))
+                        
+                        total_lpo_qty += po.remaining_stock
+                        total_lpo_price += remaining_price
+                    
+                    # Add subtotal row
+                    self.add_subtotal_row("Local PO Total", total_lpo_qty, total_lpo_price)
                 
-                # Reference
-                self.stock_table.setItem(row, 1, QTableWidgetItem(item['product_reference']))
+                # Section 2: Remaining Supplier Purchases (non-empty only)
+                supplier_purchases = session.query(Purchase).filter(
+                    Purchase.remaining_stock > 0
+                ).all()
                 
-                # Total ordered
-                ordered_item = QTableWidgetItem(str(item['total_ordered']))
-                ordered_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.stock_table.setItem(row, 2, ordered_item)
+                if supplier_purchases:
+                    self.add_section_header("🚚 Supplier Purchases (Remaining)")
+                    
+                    total_sp_qty = 0
+                    total_sp_price = 0
+                    
+                    for purchase in supplier_purchases:
+                        row = self.stock_table.rowCount()
+                        self.stock_table.insertRow(row)
+                        
+                        self.stock_table.setItem(row, 0, QTableWidgetItem("Supplier Purchase"))
+                        
+                        item_name = f"{purchase.invoice_number} - {purchase.product.name if purchase.product else 'N/A'}"
+                        if purchase.supplier_name:
+                            item_name += f" ({purchase.supplier_name})"
+                        self.stock_table.setItem(row, 1, QTableWidgetItem(item_name))
+                        
+                        qty_item = QTableWidgetItem(str(purchase.remaining_stock))
+                        qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        self.stock_table.setItem(row, 2, qty_item)
+                        
+                        unit_price = float(purchase.unit_price)
+                        unit_price_item = QTableWidgetItem(f"{unit_price:.3f}")
+                        unit_price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
+                        self.stock_table.setItem(row, 3, unit_price_item)
+                        
+                        remaining_price = unit_price * purchase.remaining_stock
+                        price_item = QTableWidgetItem(f"{remaining_price:.3f}")
+                        price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
+                        self.stock_table.setItem(row, 4, price_item)
+                        
+                        notes = f"Total: {purchase.quantity} | Used: {purchase.quantity - purchase.remaining_stock}"
+                        self.stock_table.setItem(row, 5, QTableWidgetItem(notes))
+                        
+                        total_sp_qty += purchase.remaining_stock
+                        total_sp_price += remaining_price
+                    
+                    # Add subtotal row
+                    self.add_subtotal_row("Supplier Purchase Total", total_sp_qty, total_sp_price)
                 
-                # Remaining
-                remaining_item = QTableWidgetItem(str(item['total_remaining']))
-                remaining_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.stock_table.setItem(row, 3, remaining_item)
+                # Section 3: Stock Distributed to Pharmacies (within date range)
+                transactions = session.query(Transaction).filter(
+                    Transaction.transaction_date >= date_from_dt,
+                    Transaction.transaction_date <= date_to_dt
+                ).all()
                 
-                # Used
-                used_item = QTableWidgetItem(str(item['total_used']))
-                used_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.stock_table.setItem(row, 4, used_item)
+                if transactions:
+                    self.add_section_header(f"🏥 Distributed to Pharmacies ({date_from.strftime('%d/%m/%Y')} - {date_to.strftime('%d/%m/%Y')})")
+                    
+                    # Group by pharmacy
+                    pharmacy_totals = {}
+                    no_pharmacy_total = 0
+                    
+                    for txn in transactions:
+                        location = txn.distribution_location
+                        if location:
+                            if location.pharmacy_id:
+                                pharmacy = location.pharmacy
+                                pharmacy_name = pharmacy.name if pharmacy else f"Pharmacy ID {location.pharmacy_id}"
+                                
+                                if pharmacy_name not in pharmacy_totals:
+                                    pharmacy_totals[pharmacy_name] = {
+                                        'total_qty': 0,
+                                        'locations': {}
+                                    }
+                                
+                                loc_name = location.name
+                                if loc_name not in pharmacy_totals[pharmacy_name]['locations']:
+                                    pharmacy_totals[pharmacy_name]['locations'][loc_name] = 0
+                                
+                                pharmacy_totals[pharmacy_name]['locations'][loc_name] += txn.quantity
+                                pharmacy_totals[pharmacy_name]['total_qty'] += txn.quantity
+                            else:
+                                # Location without pharmacy - treat as independent
+                                loc_name = f"🏪 {location.name} (Independent)"
+                                if loc_name not in pharmacy_totals:
+                                    pharmacy_totals[loc_name] = {
+                                        'total_qty': 0,
+                                        'locations': {}
+                                    }
+                                pharmacy_totals[loc_name]['total_qty'] += txn.quantity
+                    
+                    grand_total_qty = 0
+                    
+                    # Display pharmacy totals with location breakdown
+                    for pharmacy_name, data in pharmacy_totals.items():
+                        # Pharmacy total row
+                        row = self.stock_table.rowCount()
+                        self.stock_table.insertRow(row)
+                        
+                        self.stock_table.setItem(row, 0, QTableWidgetItem("Pharmacy"))
+                        
+                        pharmacy_item = QTableWidgetItem(pharmacy_name)
+                        font = pharmacy_item.font()
+                        font.setBold(True)
+                        pharmacy_item.setFont(font)
+                        self.stock_table.setItem(row, 1, pharmacy_item)
+                        
+                        qty_item = QTableWidgetItem(str(data['total_qty']))
+                        qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                        font = qty_item.font()
+                        font.setBold(True)
+                        qty_item.setFont(font)
+                        self.stock_table.setItem(row, 2, qty_item)
+                        
+                        self.stock_table.setItem(row, 3, QTableWidgetItem("-"))
+                        self.stock_table.setItem(row, 4, QTableWidgetItem("-"))
+                        self.stock_table.setItem(row, 5, QTableWidgetItem(""))
+                        
+                        # Set background color for pharmacy rows
+                        bg_color = QColor("#e3f2fd")
+                        for col in range(6):
+                            if self.stock_table.item(row, col):
+                                self.stock_table.item(row, col).setBackground(bg_color)
+                        
+                        # Location breakdown (if it's a real pharmacy with locations)
+                        if data['locations']:
+                            for loc_name, loc_qty in data['locations'].items():
+                                row = self.stock_table.rowCount()
+                                self.stock_table.insertRow(row)
+                                
+                                self.stock_table.setItem(row, 0, QTableWidgetItem("  └─ Location"))
+                                self.stock_table.setItem(row, 1, QTableWidgetItem(f"  {loc_name}"))
+                                
+                                loc_qty_item = QTableWidgetItem(str(loc_qty))
+                                loc_qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                                self.stock_table.setItem(row, 2, loc_qty_item)
+                                
+                                self.stock_table.setItem(row, 3, QTableWidgetItem("-"))
+                                self.stock_table.setItem(row, 4, QTableWidgetItem("-"))
+                                self.stock_table.setItem(row, 5, QTableWidgetItem(""))
+                        
+                        grand_total_qty += data['total_qty']
+                    
+                    # Add grand total row
+                    self.add_subtotal_row("Total Distributed", grand_total_qty, None)
                 
-                # Status
-                # Calculate remaining percentage (not usage percentage)
-                remaining_percentage = ((item['total_remaining'] / item['total_ordered']) * 100) if item['total_ordered'] > 0 else 0
+                # Update summary label
+                summary_text = f"📊 Report Period: {date_from.strftime('%d/%m/%Y')} to {date_to.strftime('%d/%m/%Y')}"
+                if local_pos:
+                    summary_text += f" | Local PO Remaining: {total_lpo_qty} units (BHD {total_lpo_price:.3f})"
+                if supplier_purchases:
+                    summary_text += f" | Supplier Stock Remaining: {total_sp_qty} units (BHD {total_sp_price:.3f})"
+                if transactions:
+                    summary_text += f" | Distributed: {grand_total_qty} units"
                 
-                if remaining_percentage == 0:
-                    status = "Depleted"
-                    color = QColor("#f8d7da")
-                    text_color = QColor("#721c24")
-                elif remaining_percentage <= 20:
-                    status = "Critical"
-                    color = QColor("#fff3cd")
-                    text_color = QColor("#856404")
-                elif remaining_percentage <= 50:
-                    status = "Low"
-                    color = QColor("#fff3cd")
-                    text_color = QColor("#856404")
-                else:
-                    status = "Healthy"
-                    color = QColor("#d4edda")
-                    text_color = QColor("#155724")
+                self.stock_summary_label.setText(summary_text)
                 
-                status_item = QTableWidgetItem(f"{status} ({remaining_percentage:.1f}%)")
-                status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                status_item.setBackground(color)
-                status_item.setForeground(text_color)
-                self.stock_table.setItem(row, 5, status_item)
-            
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to generate stock report:\n{str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    def add_section_header(self, title: str):
+        """Add a section header row to the table."""
+        row = self.stock_table.rowCount()
+        self.stock_table.insertRow(row)
+        
+        header_item = QTableWidgetItem(title)
+        font = header_item.font()
+        font.setBold(True)
+        font.setPointSize(11)
+        header_item.setFont(font)
+        header_item.setBackground(QColor("#d3d3d3"))
+        
+        self.stock_table.setItem(row, 0, header_item)
+        
+        # Merge cells for header (now 6 columns)
+        for col in range(1, 6):
+            empty_item = QTableWidgetItem("")
+            empty_item.setBackground(QColor("#d3d3d3"))
+            self.stock_table.setItem(row, col, empty_item)
+    
+    def add_subtotal_row(self, label: str, quantity: int, price: float = None):
+        """Add a subtotal row to the table."""
+        row = self.stock_table.rowCount()
+        self.stock_table.insertRow(row)
+        
+        self.stock_table.setItem(row, 0, QTableWidgetItem(""))
+        
+        label_item = QTableWidgetItem(label)
+        font = label_item.font()
+        font.setBold(True)
+        label_item.setFont(font)
+        label_item.setBackground(QColor("#fff3cd"))
+        self.stock_table.setItem(row, 1, label_item)
+        
+        qty_item = QTableWidgetItem(str(quantity))
+        qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        font = qty_item.font()
+        font.setBold(True)
+        qty_item.setFont(font)
+        qty_item.setBackground(QColor("#fff3cd"))
+        self.stock_table.setItem(row, 2, qty_item)
+        
+        # Skip unit price column (col 3)
+        empty_unit_price = QTableWidgetItem("")
+        empty_unit_price.setBackground(QColor("#fff3cd"))
+        self.stock_table.setItem(row, 3, empty_unit_price)
+        
+        if price is not None:
+            price_item = QTableWidgetItem(f"{price:.3f}")
+            price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
+            font = price_item.font()
+            font.setBold(True)
+            price_item.setFont(font)
+            price_item.setBackground(QColor("#fff3cd"))
+            self.stock_table.setItem(row, 4, price_item)
+        else:
+            empty_item = QTableWidgetItem("")
+            empty_item.setBackground(QColor("#fff3cd"))
+            self.stock_table.setItem(row, 4, empty_item)
+        
+        # Notes column (col 5)
+        empty_notes = QTableWidgetItem("")
+        empty_notes.setBackground(QColor("#fff3cd"))
+        self.stock_table.setItem(row, 5, empty_notes)
+        
+        notes_item = QTableWidgetItem("")
+        notes_item.setBackground(QColor("#fff3cd"))
+        self.stock_table.setItem(row, 4, notes_item)
     
     def generate_coupon_report(self):
         """Generate coupon distribution report."""
@@ -516,8 +900,9 @@ class ReportsWidget(QWidget):
             # Apply filters
             filtered_coupons = []
             for coupon in all_coupons:
-                # Date filter
-                if coupon.created_at.date() < date_from or coupon.created_at.date() > date_to:
+                # Date filter - use date_received instead of created_at
+                coupon_date = coupon.date_received.date() if coupon.date_received else coupon.created_at.date()
+                if coupon_date < date_from or coupon_date > date_to:
                     continue
                 
                 # Status filter
@@ -550,9 +935,10 @@ class ReportsWidget(QWidget):
                 row = self.coupon_table.rowCount()
                 self.coupon_table.insertRow(row)
                 
-                # Date
+                # Date - use date_received (date only, no timestamp)
+                coupon_date = coupon.date_received if coupon.date_received else coupon.created_at
                 self.coupon_table.setItem(row, 0, QTableWidgetItem(
-                    coupon.created_at.strftime("%Y-%m-%d %H:%M")
+                    coupon_date.strftime("%Y-%m-%d")
                 ))
                 
                 # Patient
@@ -748,6 +1134,14 @@ class ReportsWidget(QWidget):
                         else:
                             row_data.append('""')
                     f.write(','.join(row_data) + '\n')
+                
+                # Add summary for coupon report
+                if report_name == "coupon_report" and hasattr(self, 'coupon_summary_label'):
+                    summary_text = self.coupon_summary_label.text()
+                    # Remove emojis for CSV
+                    summary_text = summary_text.replace('📊', '').replace('✅', '').replace('⏳', '').replace('📦', '')
+                    f.write('\n')
+                    f.write(f'"{summary_text}"\n')
             
             QMessageBox.information(
                 self,

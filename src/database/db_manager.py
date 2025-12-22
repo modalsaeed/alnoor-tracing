@@ -184,6 +184,180 @@ class DatabaseManager:
                     connection.execute(text("CREATE INDEX IF NOT EXISTS ix_patient_coupons_grv_reference ON patient_coupons (grv_reference)"))
                     connection.commit()
                 
+                # Check if pharmacies has trn column
+                result = connection.execute(text("PRAGMA table_info(pharmacies)"))
+                columns = [row[1] for row in result.fetchall()]
+                
+                if 'trn' not in columns:
+                    print("Migrating database: Adding 'trn' to pharmacies...")
+                    connection.execute(text("ALTER TABLE pharmacies ADD COLUMN trn VARCHAR(100)"))
+                    connection.commit()
+                
+                # Check if distribution_locations has trn column
+                result = connection.execute(text("PRAGMA table_info(distribution_locations)"))
+                columns = [row[1] for row in result.fetchall()]
+                
+                if 'trn' not in columns:
+                    print("Migrating database: Adding 'trn' to distribution_locations...")
+                    connection.execute(text("ALTER TABLE distribution_locations ADD COLUMN trn VARCHAR(100)"))
+                    connection.commit()
+                
+                # Check if reference columns are nullable (make optional)
+                # For distribution_locations, medical_centres, pharmacies, and transactions
+                result = connection.execute(text("PRAGMA table_info(distribution_locations)"))
+                columns = {row[1]: row for row in result.fetchall()}
+                
+                # Check if reference column in distribution_locations is NOT NULL (notnull=1)
+                if 'reference' in columns and columns['reference'][3] == 1:  # notnull field
+                    print("Migrating database: Making distribution_locations.reference nullable...")
+                    # Temporarily disable foreign keys for table recreation
+                    connection.execute(text("PRAGMA foreign_keys=OFF"))
+                    connection.execute(text("BEGIN TRANSACTION"))
+                    
+                    # Clean up any leftover temporary tables
+                    connection.execute(text("DROP TABLE IF EXISTS distribution_locations_new"))
+                    
+                    # SQLite doesn't support ALTER COLUMN, so we need to recreate the table
+                    connection.execute(text("""
+                        CREATE TABLE distribution_locations_new (
+                            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                            name VARCHAR(255) NOT NULL,
+                            reference VARCHAR(100),
+                            trn VARCHAR(100),
+                            pharmacy_id INTEGER,
+                            address TEXT,
+                            contact_person VARCHAR(255),
+                            phone VARCHAR(50),
+                            created_at DATETIME NOT NULL,
+                            updated_at DATETIME NOT NULL,
+                            FOREIGN KEY(pharmacy_id) REFERENCES pharmacies (id)
+                        )
+                    """))
+                    connection.execute(text("""
+                        INSERT INTO distribution_locations_new 
+                        SELECT id, name, reference, trn, pharmacy_id, address, contact_person, phone, created_at, updated_at
+                        FROM distribution_locations
+                    """))
+                    connection.execute(text("DROP TABLE distribution_locations"))
+                    connection.execute(text("ALTER TABLE distribution_locations_new RENAME TO distribution_locations"))
+                    connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_distribution_locations_reference ON distribution_locations (reference)"))
+                    
+                    connection.execute(text("COMMIT"))
+                    connection.execute(text("PRAGMA foreign_keys=ON"))
+                    connection.commit()
+                
+                # Check if reference column in medical_centres is NOT NULL
+                result = connection.execute(text("PRAGMA table_info(medical_centres)"))
+                columns = {row[1]: row for row in result.fetchall()}
+                
+                if 'reference' in columns and columns['reference'][3] == 1:  # notnull field
+                    print("Migrating database: Making medical_centres.reference nullable...")
+                    connection.execute(text("PRAGMA foreign_keys=OFF"))
+                    connection.execute(text("BEGIN TRANSACTION"))
+                    
+                    connection.execute(text("""
+                        CREATE TABLE medical_centres_new (
+                            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                            name VARCHAR(255) NOT NULL,
+                            reference VARCHAR(100),
+                            address TEXT,
+                            contact_person VARCHAR(255),
+                            phone VARCHAR(50),
+                            created_at DATETIME NOT NULL,
+                            updated_at DATETIME NOT NULL
+                        )
+                    """))
+                    connection.execute(text("""
+                        INSERT INTO medical_centres_new 
+                        SELECT id, name, reference, address, contact_person, phone, created_at, updated_at
+                        FROM medical_centres
+                    """))
+                    connection.execute(text("DROP TABLE medical_centres"))
+                    connection.execute(text("ALTER TABLE medical_centres_new RENAME TO medical_centres"))
+                    connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_medical_centres_reference ON medical_centres (reference)"))
+                    
+                    connection.execute(text("COMMIT"))
+                    connection.execute(text("PRAGMA foreign_keys=ON"))
+                    connection.commit()
+                
+                # Check if reference column in pharmacies is NOT NULL
+                result = connection.execute(text("PRAGMA table_info(pharmacies)"))
+                columns = {row[1]: row for row in result.fetchall()}
+                
+                if 'reference' in columns and columns['reference'][3] == 1:  # notnull field
+                    print("Migrating database: Making pharmacies.reference nullable...")
+                    connection.execute(text("PRAGMA foreign_keys=OFF"))
+                    connection.execute(text("BEGIN TRANSACTION"))
+                    
+                    connection.execute(text("""
+                        CREATE TABLE pharmacies_new (
+                            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                            name VARCHAR(255) NOT NULL,
+                            reference VARCHAR(100),
+                            trn VARCHAR(100),
+                            contact_person VARCHAR(255),
+                            phone VARCHAR(50),
+                            email VARCHAR(255),
+                            notes TEXT,
+                            created_at DATETIME NOT NULL,
+                            updated_at DATETIME NOT NULL
+                        )
+                    """))
+                    connection.execute(text("""
+                        INSERT INTO pharmacies_new 
+                        SELECT id, name, reference, trn, contact_person, phone, email, notes, created_at, updated_at
+                        FROM pharmacies
+                    """))
+                    connection.execute(text("DROP TABLE pharmacies"))
+                    connection.execute(text("ALTER TABLE pharmacies_new RENAME TO pharmacies"))
+                    connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_pharmacies_name ON pharmacies (name)"))
+                    connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_pharmacies_reference ON pharmacies (reference)"))
+                    
+                    connection.execute(text("COMMIT"))
+                    connection.execute(text("PRAGMA foreign_keys=ON"))
+                    connection.commit()
+                
+                # Check if transaction_reference column in transactions is NOT NULL
+                result = connection.execute(text("PRAGMA table_info(transactions)"))
+                columns = {row[1]: row for row in result.fetchall()}
+                
+                if 'transaction_reference' in columns and columns['transaction_reference'][3] == 1:  # notnull field
+                    print("Migrating database: Making transactions.transaction_reference nullable...")
+                    connection.execute(text("PRAGMA foreign_keys=OFF"))
+                    connection.execute(text("BEGIN TRANSACTION"))
+                    
+                    # This is more complex due to foreign keys, but we'll handle it
+                    connection.execute(text("""
+                        CREATE TABLE transactions_new (
+                            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                            transaction_reference VARCHAR(100),
+                            product_id INTEGER NOT NULL,
+                            purchase_id INTEGER,
+                            distribution_location_id INTEGER NOT NULL,
+                            quantity INTEGER NOT NULL,
+                            transaction_date DATETIME NOT NULL,
+                            notes TEXT,
+                            created_at DATETIME NOT NULL,
+                            updated_at DATETIME NOT NULL,
+                            FOREIGN KEY(product_id) REFERENCES products (id),
+                            FOREIGN KEY(purchase_id) REFERENCES purchases (id),
+                            FOREIGN KEY(distribution_location_id) REFERENCES distribution_locations (id)
+                        )
+                    """))
+                    connection.execute(text("""
+                        INSERT INTO transactions_new 
+                        SELECT id, transaction_reference, product_id, purchase_id, distribution_location_id, 
+                               quantity, transaction_date, notes, created_at, updated_at
+                        FROM transactions
+                    """))
+                    connection.execute(text("DROP TABLE transactions"))
+                    connection.execute(text("ALTER TABLE transactions_new RENAME TO transactions"))
+                    connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_transactions_transaction_reference ON transactions (transaction_reference)"))
+                    
+                    connection.execute(text("COMMIT"))
+                    connection.execute(text("PRAGMA foreign_keys=ON"))
+                    connection.commit()
+                
         except Exception as e:
             print(f"Migration check failed: {e}")
     

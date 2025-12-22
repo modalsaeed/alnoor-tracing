@@ -60,7 +60,7 @@ class MedicalCentreDialog(QDialog):
         # Centre Reference
         self.reference_input = QLineEdit()
         self.reference_input.setPlaceholderText("Enter unique reference (e.g., MC-001)")
-        form_layout.addRow("Reference: *", self.reference_input)
+        form_layout.addRow("Reference:", self.reference_input)
         
         # Address
         self.address_input = QTextEdit()
@@ -120,7 +120,8 @@ class MedicalCentreDialog(QDialog):
         """Populate form fields with existing centre data."""
         if self.centre:
             self.name_input.setText(self.centre.name)
-            self.reference_input.setText(self.centre.reference)
+            if self.centre.reference:
+                self.reference_input.setText(self.centre.reference)
             if self.centre.address:
                 self.address_input.setPlainText(self.centre.address)
             if self.centre.contact_person:
@@ -145,10 +146,11 @@ class MedicalCentreDialog(QDialog):
         if not is_valid:
             return False, error_msg
         
-        # Validate medical centre reference
-        is_valid, error_msg = validate_reference(reference, min_length=2)
-        if not is_valid:
-            return False, f"Medical centre reference error: {error_msg}"
+        # Validate medical centre reference if provided
+        if reference:
+            is_valid, error_msg = validate_reference(reference, min_length=2)
+            if not is_valid:
+                return False, f"Medical centre reference error: {error_msg}"
         
         # Validate phone if provided
         if phone:
@@ -156,13 +158,14 @@ class MedicalCentreDialog(QDialog):
             if not is_valid:
                 return False, f"Phone error: {error_msg}"
         
-        # Normalize reference
-        reference_normalized = normalize_reference(reference)
-        
-        # Check for duplicate reference
-        if not self.is_edit_mode or (self.centre and reference_normalized != self.centre.reference):
-            if self.is_reference_duplicate(reference_normalized):
-                return False, f"Reference '{reference_normalized}' already exists. Please use a unique reference."
+        # Normalize reference if provided
+        if reference:
+            reference_normalized = normalize_reference(reference)
+            
+            # Check for duplicate reference
+            if not self.is_edit_mode or (self.centre and reference_normalized != self.centre.reference):
+                if self.is_reference_duplicate(reference_normalized):
+                    return False, f"Reference '{reference_normalized}' already exists. Please use a unique reference."
         
         return True, ""
     
@@ -195,7 +198,7 @@ class MedicalCentreDialog(QDialog):
             if self.is_edit_mode:
                 # Update existing centre
                 self.centre.name = name
-                self.centre.reference = reference.upper()
+                self.centre.reference = reference.upper() if reference else None
                 self.centre.address = address if address else None
                 self.centre.contact_person = contact_person if contact_person else None
                 self.centre.phone = phone if phone else None
@@ -210,7 +213,7 @@ class MedicalCentreDialog(QDialog):
                 # Create new centre
                 new_centre = MedicalCentre(
                     name=name,
-                    reference=reference.upper(),
+                    reference=reference.upper() if reference else None,
                     address=address if address else None,
                     contact_person=contact_person if contact_person else None,
                     phone=phone if phone else None

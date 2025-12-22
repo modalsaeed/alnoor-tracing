@@ -50,7 +50,13 @@ class PharmacyDialog(QDialog):
         self.reference_input = QLineEdit()
         self.reference_input.setPlaceholderText("Enter reference code (will be auto-uppercase)")
         self.reference_input.setMaxLength(50)
-        form_layout.addRow("Reference*:", self.reference_input)
+        form_layout.addRow("Reference:", self.reference_input)
+        
+        # TRN (Tax Registration Number)
+        self.trn_input = QLineEdit()
+        self.trn_input.setPlaceholderText("Enter Tax Registration Number")
+        self.trn_input.setMaxLength(100)
+        form_layout.addRow("TRN:", self.trn_input)
         
         # Contact Person
         self.contact_person_input = QLineEdit()
@@ -109,7 +115,11 @@ class PharmacyDialog(QDialog):
             return
         
         self.name_input.setText(self.pharmacy.name)
-        self.reference_input.setText(self.pharmacy.reference)
+        if self.pharmacy.reference:
+            self.reference_input.setText(self.pharmacy.reference)
+        
+        if self.pharmacy.trn:
+            self.trn_input.setText(self.pharmacy.trn)
         
         if self.pharmacy.contact_person:
             self.contact_person_input.setText(self.pharmacy.contact_person)
@@ -128,6 +138,7 @@ class PharmacyDialog(QDialog):
         # Get values
         name = sanitize_input(self.name_input.text())
         reference = sanitize_input(self.reference_input.text())
+        trn = sanitize_input(self.trn_input.text())
         contact_person = sanitize_input(self.contact_person_input.text())
         phone = sanitize_input(self.phone_input.text())
         email = sanitize_input(self.email_input.text())
@@ -139,13 +150,8 @@ class PharmacyDialog(QDialog):
             self.name_input.setFocus()
             return
         
-        if not reference:
-            QMessageBox.warning(self, "Validation Error", "Reference is required.")
-            self.reference_input.setFocus()
-            return
-        
-        # Validate reference format
-        if not validate_reference(reference):
+        # Validate reference format if provided
+        if reference and not validate_reference(reference):
             QMessageBox.warning(
                 self, "Validation Error",
                 "Reference must contain only letters, numbers, hyphens, and underscores."
@@ -153,15 +159,19 @@ class PharmacyDialog(QDialog):
             self.reference_input.setFocus()
             return
         
-        # Normalize reference to uppercase
-        reference = reference.upper()
+        # Normalize reference to uppercase if provided
+        if reference:
+            reference = reference.upper()
+        else:
+            reference = None
         
         try:
             with self.db_manager.get_session() as session:
                 if self.is_edit_mode:
                     # Update existing pharmacy
                     self.pharmacy.name = name
-                    self.pharmacy.reference = reference
+                    self.pharmacy.reference = reference if reference else None
+                    self.pharmacy.trn = trn if trn else None
                     self.pharmacy.contact_person = contact_person if contact_person else None
                     self.pharmacy.phone = phone if phone else None
                     self.pharmacy.email = email if email else None
@@ -185,23 +195,25 @@ class PharmacyDialog(QDialog):
                         self.name_input.setFocus()
                         return
                     
-                    # Check for duplicate reference
-                    existing = session.query(Pharmacy).filter(
-                        Pharmacy.reference == reference
-                    ).first()
-                    
-                    if existing:
-                        QMessageBox.warning(
-                            self, "Duplicate Entry",
-                            f"A pharmacy with the reference '{reference}' already exists."
-                        )
-                        self.reference_input.setFocus()
-                        return
+                    # Check for duplicate reference if provided
+                    if reference:
+                        existing = session.query(Pharmacy).filter(
+                            Pharmacy.reference == reference
+                        ).first()
+                        
+                        if existing:
+                            QMessageBox.warning(
+                                self, "Duplicate Entry",
+                                f"A pharmacy with the reference '{reference}' already exists."
+                            )
+                            self.reference_input.setFocus()
+                            return
                     
                     # Create new pharmacy
                     new_pharmacy = Pharmacy(
                         name=name,
-                        reference=reference,
+                        reference=reference if reference else None,
+                        trn=trn if trn else None,
                         contact_person=contact_person if contact_person else None,
                         phone=phone if phone else None,
                         email=email if email else None,

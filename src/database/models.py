@@ -170,7 +170,8 @@ class Pharmacy(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), unique=True, nullable=False)
-    reference = Column(String(100), unique=True, nullable=False, index=True)
+    reference = Column(String(100), unique=True, nullable=True, index=True)  # Made optional
+    trn = Column(String(100), nullable=True)  # Tax Registration Number
     contact_person = Column(String(255), nullable=True)
     phone = Column(String(50), nullable=True)
     email = Column(String(255), nullable=True)
@@ -186,9 +187,9 @@ class Pharmacy(Base):
     
     @validates('reference')
     def validate_reference(self, key, value):
-        if not value or not value.strip():
-            raise ValueError("Pharmacy reference cannot be empty")
-        return value.strip().upper()
+        if value and value.strip():
+            return value.strip().upper()
+        return value
 
 
 class DistributionLocation(Base):
@@ -198,7 +199,8 @@ class DistributionLocation(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False)
-    reference = Column(String(100), unique=True, nullable=False, index=True)
+    reference = Column(String(100), unique=True, nullable=True, index=True)  # Made optional
+    trn = Column(String(100), nullable=True)  # Tax Registration Number
     pharmacy_id = Column(Integer, ForeignKey('pharmacies.id'), nullable=True)  # Optional pharmacy grouping
     address = Column(Text, nullable=True)
     contact_person = Column(String(255), nullable=True)
@@ -216,9 +218,9 @@ class DistributionLocation(Base):
     
     @validates('reference')
     def validate_reference(self, key, value):
-        if not value or not value.strip():
-            raise ValueError("Distribution location reference cannot be empty")
-        return value.strip().upper()
+        if value and value.strip():
+            return value.strip().upper()
+        return value
 
 
 class MedicalCentre(Base):
@@ -228,7 +230,7 @@ class MedicalCentre(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False)
-    reference = Column(String(100), unique=True, nullable=False, index=True)
+    reference = Column(String(100), unique=True, nullable=True, index=True)  # Made optional
     address = Column(Text, nullable=True)
     contact_person = Column(String(255), nullable=True)
     phone = Column(String(50), nullable=True)
@@ -243,9 +245,9 @@ class MedicalCentre(Base):
     
     @validates('reference')
     def validate_reference(self, key, value):
-        if not value or not value.strip():
-            raise ValueError("Medical centre reference cannot be empty")
-        return value.strip().upper()
+        if value and value.strip():
+            return value.strip().upper()
+        return value
 
 
 class PatientCoupon(Base):
@@ -265,7 +267,7 @@ class PatientCoupon(Base):
     verification_reference = Column(String(100), nullable=True)
     delivery_note_number = Column(String(100), nullable=True, index=True)  # NEW: Delivery note for verification
     grv_reference = Column(String(100), nullable=True, index=True)  # NEW: GRV reference number
-    date_received = Column(DateTime, default=datetime.utcnow, nullable=False)
+    date_received = Column(DateTime, nullable=False)  # User-provided date
     date_verified = Column(DateTime, nullable=True)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -318,7 +320,7 @@ class Transaction(Base):
     __tablename__ = 'transactions'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    transaction_reference = Column(String(100), unique=True, nullable=False, index=True)
+    transaction_reference = Column(String(100), unique=True, nullable=True, index=True)  # Made optional
     purchase_id = Column(Integer, ForeignKey('purchases.id'), nullable=False)  # Changed from purchase_order_id
     product_id = Column(Integer, ForeignKey('products.id'), nullable=False)
     distribution_location_id = Column(Integer, ForeignKey('distribution_locations.id'), nullable=False)
@@ -349,9 +351,10 @@ class Transaction(Base):
     
     @validates('transaction_reference')
     def validate_transaction_reference(self, key, value):
-        if not value or not value.strip():
-            raise ValueError("Transaction reference cannot be empty")
-        return value.strip().upper()
+        # Transaction reference is optional
+        if value and value.strip():
+            return value.strip().upper()
+        return None
 
 
 class ActivityLog(Base):

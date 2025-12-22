@@ -145,7 +145,7 @@ class TransactionsWidget(QWidget):
         self.transactions_table = QTableWidget()
         self.transactions_table.setColumnCount(7)
         self.transactions_table.setHorizontalHeaderLabels([
-            "Transaction Ref", "Product", "Purchase Order", 
+            "Transaction Ref", "Product", "Supplier Invoice", 
             "Distribution Location", "Quantity", "Date", "Created At"
         ])
         
@@ -211,9 +211,9 @@ class TransactionsWidget(QWidget):
             product_item = QTableWidgetItem(product_name)
             self.transactions_table.setItem(row, 1, product_item)
             
-            # Purchase Order
-            po_ref = txn.purchase_order.po_reference if txn.purchase_order else "Unknown"
-            po_item = QTableWidgetItem(po_ref)
+            # Purchase (Supplier Invoice)
+            invoice_ref = txn.purchase.invoice_number if txn.purchase else "Unknown"
+            po_item = QTableWidgetItem(invoice_ref)
             po_item.setFont(QFont("Consolas", 9))
             self.transactions_table.setItem(row, 2, po_item)
             

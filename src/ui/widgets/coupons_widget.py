@@ -40,6 +40,7 @@ class CouponsWidget(QWidget):
         self.db_manager = db_manager
         self.coupons = []
         self.filtered_coupons = []
+        self.date_filter_enabled = True  # Enable by default to show 1 month
         self.init_ui()
         self.load_coupons()
     
@@ -123,7 +124,6 @@ class CouponsWidget(QWidget):
         self.date_from = QDateEdit()
         self.date_from.setCalendarPopup(True)
         self.date_from.setDate(QDate.currentDate().addMonths(-1))
-        self.date_from.dateChanged.connect(self.apply_filters)
         date_layout.addWidget(self.date_from)
         
         date_layout.addWidget(QLabel("to"))
@@ -131,12 +131,23 @@ class CouponsWidget(QWidget):
         self.date_to = QDateEdit()
         self.date_to.setCalendarPopup(True)
         self.date_to.setDate(QDate.currentDate())
-        self.date_to.dateChanged.connect(self.apply_filters)
         date_layout.addWidget(self.date_to)
+        
+        apply_dates_btn = QPushButton("Apply")
+        apply_dates_btn.clicked.connect(self.apply_filters)
+        date_layout.addWidget(apply_dates_btn)
         
         clear_dates_btn = QPushButton("Clear Dates")
         clear_dates_btn.clicked.connect(self.clear_date_filters)
         date_layout.addWidget(clear_dates_btn)
+        
+        date_layout.addWidget(QLabel(" | Sort:"))
+        
+        self.sort_order = QComboBox()
+        self.sort_order.addItem("⬇️ Newest First", "desc")
+        self.sort_order.addItem("⬆️ Oldest First", "asc")
+        self.sort_order.currentTextChanged.connect(self.apply_filters)
+        date_layout.addWidget(self.sort_order)
         
         date_layout.addStretch()
         layout.addLayout(date_layout)
@@ -160,6 +171,12 @@ class CouponsWidget(QWidget):
         verify_btn.clicked.connect(self.verify_coupon)
         verify_btn.setStyleSheet(StyleSheets.button_primary(Colors.PRIMARY))
         button_layout.addWidget(verify_btn)
+        
+        select_all_btn = QPushButton("☑️ Select All Shown")
+        select_all_btn.setToolTip("Select all coupons currently displayed")
+        select_all_btn.clicked.connect(self.select_all_shown)
+        select_all_btn.setStyleSheet(StyleSheets.button_secondary())
+        button_layout.addWidget(select_all_btn)
         
         grv_btn = QPushButton("📄 Add GRV Reference")
         grv_btn.setToolTip("Add Goods Received Voucher reference to verified bundles")
@@ -272,6 +289,9 @@ class CouponsWidget(QWidget):
     
     def apply_filters(self):
         """Apply current filters to coupon list."""
+        # Enable date filtering when this is called from Apply button
+        self.date_filter_enabled = True
+        
         search_text = self.search_input.text().lower()
         status_filter = self.status_filter.currentText()
         product_id = self.product_filter.currentData()
@@ -311,10 +331,13 @@ class CouponsWidget(QWidget):
             if location_id and coupon.distribution_location_id != location_id:
                 continue
             
-            # Date filter
-            coupon_date = coupon.created_at.date()
-            if coupon_date < date_from or coupon_date > date_to:
-                continue
+            # Date filter (only if enabled)
+            if self.date_filter_enabled:
+                coupon_date = coupon.date_received.date()
+                date_from = self.date_from.date().toPyDate()
+                date_to = self.date_to.date().toPyDate()
+                if coupon_date < date_from or coupon_date > date_to:
+                    continue
             
             self.filtered_coupons.append(coupon)
         
@@ -322,15 +345,25 @@ class CouponsWidget(QWidget):
         self.update_statistics()
     
     def clear_date_filters(self):
-        """Clear date range filters."""
-        self.date_from.setDate(QDate.currentDate().addYears(-10))
-        self.date_to.setDate(QDate.currentDate().addYears(10))
+        """Clear date range filters to show all coupons."""
+        self.date_filter_enabled = False
+        self.date_from.setDate(QDate.currentDate().addMonths(-1))
+        self.date_to.setDate(QDate.currentDate())
+        self.apply_filters()
     
     def populate_table(self):
         """Populate table with filtered coupons."""
         self.table.setRowCount(0)
         
-        for coupon in self.filtered_coupons:
+        # Sort coupons by date_received
+        sort_order = self.sort_order.currentData() if hasattr(self, 'sort_order') else "desc"
+        sorted_coupons = sorted(
+            self.filtered_coupons,
+            key=lambda c: c.date_received if c.date_received else c.created_at,
+            reverse=(sort_order == "desc")
+        )
+        
+        for coupon in sorted_coupons:
             row = self.table.rowCount()
             self.table.insertRow(row)
             
@@ -360,8 +393,9 @@ class CouponsWidget(QWidget):
             location_name = coupon.distribution_location.name if coupon.distribution_location else "Unknown"
             self.table.setItem(row, 6, QTableWidgetItem(location_name))
             
-            # Date
-            date_str = coupon.created_at.strftime("%Y-%m-%d %H:%M")
+            # Date - use date_received (date only, no timestamp)
+            coupon_date = coupon.date_received if coupon.date_received else coupon.created_at
+            date_str = coupon_date.strftime("%Y-%m-%d")
             self.table.setItem(row, 7, QTableWidgetItem(date_str))
             
             # Status (with color coding)
@@ -434,6 +468,16 @@ class CouponsWidget(QWidget):
         dialog = CouponDialog(self.db_manager, coupon, parent=self)
         if dialog.exec():
             self.load_coupons()
+    
+    def select_all_shown(self):
+        """Select all currently displayed coupons in the table."""
+        self.table.selectAll()
+        QMessageBox.information(
+            self,
+            "Selection",
+            f"Selected all {len(self.filtered_coupons)} shown coupon(s).\n"
+            "You can now verify them all at once."
+        )
     
     def verify_coupon(self):
         """Open dialog to verify selected coupon(s)."""
