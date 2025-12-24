@@ -9,6 +9,12 @@ PyQt6-Qt6>=6.6.0
 SQLAlchemy>=2.0.0
 alembic>=1.12.0
 
+# API Server (for multi-user concurrent access)
+Flask>=3.0.0
+Flask-CORS>=4.0.0
+requests>=2.31.0
+waitress>=3.0.0  # Production WSGI server for Windows
+
 # Data Processing
 pandas>=2.1.0
 openpyxl>=3.1.0  # For Excel export support

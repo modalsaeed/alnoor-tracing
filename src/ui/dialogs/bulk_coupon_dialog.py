@@ -366,22 +366,45 @@ class BulkCouponDialog(QDialog):
                 )
                 return
             
-            # Save all coupons with their individual dates
+            # Save all coupons - use batch method for better performance
             success_count = 0
-            for coupon_ref, quantity, date_received in self.coupon_entries:
-                new_coupon = PatientCoupon(
-                    coupon_reference=coupon_ref,
-                    patient_name=None,  # Bulk entry without patient info
-                    cpr=None,
-                    product_id=product_id,
-                    quantity_pieces=quantity,
-                    medical_centre_id=medical_centre_id,
-                    distribution_location_id=distribution_location_id,
-                    verified=False,
-                    date_received=date_received
-                )
-                self.db_manager.add(new_coupon)
-                success_count += 1
+            
+            # Check if db_manager has batch method (for API client mode)
+            if hasattr(self.db_manager, 'create_patient_coupons_batch'):
+                # Use batch API endpoint (10-100x faster for API client mode)
+                coupons_data = []
+                for coupon_ref, quantity, date_received in self.coupon_entries:
+                    coupons_data.append({
+                        'coupon_reference': coupon_ref,
+                        'patient_name': None,
+                        'cpr': None,
+                        'product_id': product_id,
+                        'quantity_pieces': quantity,
+                        'medical_centre_id': medical_centre_id,
+                        'distribution_location_id': distribution_location_id,
+                        'verified': False,
+                        'date_received': date_received.isoformat() if hasattr(date_received, 'isoformat') else str(date_received),
+                        'notes': None
+                    })
+                
+                result = self.db_manager.create_patient_coupons_batch(coupons_data)
+                success_count = result.get('count', len(coupons_data))
+            else:
+                # Use traditional method for local database mode
+                for coupon_ref, quantity, date_received in self.coupon_entries:
+                    new_coupon = PatientCoupon(
+                        coupon_reference=coupon_ref,
+                        patient_name=None,  # Bulk entry without patient info
+                        cpr=None,
+                        product_id=product_id,
+                        quantity_pieces=quantity,
+                        medical_centre_id=medical_centre_id,
+                        distribution_location_id=distribution_location_id,
+                        verified=False,
+                        date_received=date_received
+                    )
+                    self.db_manager.add(new_coupon)
+                    success_count += 1
             
             product_name = self.product_combo.currentText()
             total_pieces = sum(qty for _, qty, _ in self.coupon_entries)

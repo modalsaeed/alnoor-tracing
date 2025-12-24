@@ -485,7 +485,22 @@ def generate_documentation(version, release_dir):
     # Create README
     readme = f"""# {APP_NAME} v{version}
 
-## Installation
+## 📦 Package Contents
+
+This release includes TWO deployment options:
+
+### Option 1: Single PC / RDP Deployment
+- Use the main installer for standalone or RDP-based multi-user setup
+
+### Option 2: API Server Multi-User Deployment  
+- Server files in `Server/` folder (for IT person)
+- Client installer (same as Option 1, just needs config.ini)
+
+See DEPLOYMENT_OPTIONS.md for detailed comparison.
+
+---
+
+## 🖥️ SINGLE PC INSTALLATION
 
 ### Option 1: Installer (Recommended)
 1. Run `AlnoorMedicalServices-Setup-v{version}.exe`
@@ -497,37 +512,136 @@ def generate_documentation(version, release_dir):
 2. Run `{EXECUTABLE_NAME}-Portable.exe`
 3. No installation required
 
-## Database Location
+**Database Location**: `%LOCALAPPDATA%\\{APP_NAME}\\database\\alnoor.db`
 
-The application creates its database automatically on first run:
+---
 
-- **Installed Version**: `%LOCALAPPDATA%\\{APP_NAME}\\database\\alnoor.db`
-- **Portable Version**: `%LOCALAPPDATA%\\{APP_NAME}\\database\\alnoor.db`
+## 👥 MULTI-USER INSTALLATION
 
-## Important Notes
+### Choose Your Deployment Method:
 
-⚠️ **Fresh Database**: This installation will create a NEW empty database.
+**METHOD A: Remote Desktop (Simpler)**
+- Setup time: 30 minutes
+- Users: 2-4 concurrent
+- Users work via Remote Desktop
+- See: Setup-MultiUser.ps1 script
 
-✅ **Data Isolation**: Your production data is completely separate from development.
+**METHOD B: API Server (Better UX)**  
+- Setup time: 30 minutes
+- Users: 4-10+ concurrent
+- Each user works on their own PC
+- See: Server/ folder + API_SERVER_SETUP_GUIDE.md
 
-⚠️ **Backup Regularly**: Use File → Backup Database to create backups.
+---
 
-## Multi-User LAN Support
+## 📁 Folder Structure
 
-✅ SQLite WAL mode enabled for concurrent access
-✅ Supports multiple users on network shares
-✅ 30-second timeout with automatic retry
-✅ Transaction-based operations prevent corruption
+```
+release/v{version}/
+├── AlnoorMedicalServices-Setup-v{version}.exe    ← Install on all PCs
+├── AlnoorMedicalServices-Portable.exe            ← Optional portable version
+│
+├── Server/                                        ← FOR API SERVER SETUP ONLY
+│   ├── API_SERVER_SETUP_GUIDE.md                 ← Give to IT person
+│   ├── start_server.bat                          ← Server startup script
+│   ├── start_server.py                           ← Cross-platform launcher
+│   ├── test_api_server.py                        ← Test script
+│   └── src/
+│       ├── api_server.py                         ← Main API server
+│       └── database/
+│           └── db_client.py                      ← HTTP client
+│
+├── Documentation/                                 ← SETUP GUIDES
+│   ├── API_SERVER_QUICKSTART.md                  ← Quick decision guide
+│   ├── DEPLOYMENT_OPTIONS.md                     ← Compare all options
+│   ├── SOLUTION_CONCURRENT_USERS.md              ← Multi-user solutions
+│   ├── SIMPLE_INSTALLATION_GUIDE.md              ← Non-technical guide
+│   └── config.ini.example                        ← Configuration examples
+│
+├── README.txt                                     ← START HERE
+├── RELEASE_NOTES.txt                             ← What's new
+└── CHECKSUMS.txt                                  ← File verification
+```
 
-## System Requirements
+---
+
+## 🚀 Quick Start Guide
+
+### For Single User:
+1. Run installer
+2. Launch app
+3. Start working!
+
+### For Multi-User (Remote Desktop):
+1. Install on server PC
+2. Run `Setup-MultiUser.ps1` (choose Option 2 or 3)  
+3. Users Remote Desktop to server
+
+### For Multi-User (API Server):
+1. Give `Server/` folder to IT person
+2. IT person follows API_SERVER_SETUP_GUIDE.md
+3. On each client PC:
+   - Install app
+   - Create config.ini with server URL
+4. Users work on their own PCs!
+
+---
+
+## ⚠️ Important Notes
+
+✅ **Fresh Database**: Creates NEW empty database on first run
+
+✅ **Data Isolation**: Your data is separate from development
+
+✅ **Backward Compatible**: All existing deployments still work
+
+⚠️ **Network Shares**: Do NOT use network shares for database with concurrent users (causes data corruption). Use RDP or API server instead.
+
+---
+
+## 🔧 Configuration Files
+
+### Single PC (Default)
+No config.ini needed - works out of the box!
+
+### Multi-User RDP
+Create `C:\\Program Files\\Alnoor Medical Services\\config.ini`:
+```ini
+[database]
+path = C:\\ProgramData\\AlnoorDB\\alnoor.db
+```
+
+### Multi-User API Server
+Create `C:\\Program Files\\Alnoor Medical Services\\config.ini`:
+```ini
+[server]
+mode = client
+server_url = http://192.168.1.10:5000
+```
+
+See `Documentation/config.ini.example` for all options.
+
+---
+
+## 📊 System Requirements
 
 - Windows 10 or later (64-bit)
 - 4 GB RAM minimum
 - 200 MB free disk space
+- **Server PC (API mode)**: Python 3.8+ required
 
-## Support
+---
+
+## 📞 Support
 
 GitHub: {APP_URL}
+
+For setup help:
+- Single PC: See SIMPLE_INSTALLATION_GUIDE.md
+- Multi-User: See API_SERVER_SETUP_GUIDE.md
+- All Options: See DEPLOYMENT_OPTIONS.md
+
+---
 
 ## Version Information
 
@@ -543,27 +657,374 @@ GitHub: {APP_URL}
     Path(f"{release_dir}/README.txt").write_text(readme, encoding='utf-8')
     print_success("Created README.txt")
     
-    # Copy network deployment guides
-    network_guide = Path("NETWORK_DEPLOYMENT_GUIDE.md")
-    quickstart = Path("NETWORK_DEPLOYMENT_QUICKSTART.md")
-    config_example = Path("config.ini.example")
+    # Create Server folder structure
+    server_dir = Path(f"{release_dir}/Server")
+    server_dir.mkdir(exist_ok=True)
+    server_src_dir = server_dir / "src" / "database"
+    server_src_dir.mkdir(parents=True, exist_ok=True)
     
-    if network_guide.exists():
-        shutil.copy2(network_guide, f"{release_dir}/NETWORK_DEPLOYMENT_GUIDE.md")
-        print_success("Copied NETWORK_DEPLOYMENT_GUIDE.md")
+    # Copy API server files
+    api_server_files = {
+        "src/api_server.py": server_dir / "src" / "api_server.py",
+        "src/database/db_client.py": server_src_dir / "db_client.py",
+        "src/database/models.py": server_src_dir / "models.py",
+        "src/database/db_manager.py": server_src_dir / "db_manager.py",
+        "start_server.bat": server_dir / "start_server.bat",
+        "start_server.py": server_dir / "start_server.py",
+        "test_api_server.py": server_dir / "test_api_server.py",
+        "API_SERVER_SETUP_GUIDE.md": server_dir / "API_SERVER_SETUP_GUIDE.md",
+    }
     
-    if quickstart.exists():
-        shutil.copy2(quickstart, f"{release_dir}/NETWORK_DEPLOYMENT_QUICKSTART.md")
-        print_success("Copied NETWORK_DEPLOYMENT_QUICKSTART.md")
+    for src, dest in api_server_files.items():
+        src_path = Path(src)
+        if src_path.exists():
+            shutil.copy2(src_path, dest)
+            print_success(f"Copied {src} to Server/")
+        else:
+            print_warning(f"File not found: {src}")
     
-    simple_guide = Path("SIMPLE_INSTALLATION_GUIDE.md")
-    if simple_guide.exists():
-        shutil.copy2(simple_guide, f"{release_dir}/SIMPLE_INSTALLATION_GUIDE.md")
-        print_success("Copied SIMPLE_INSTALLATION_GUIDE.md")
+    # Create __init__.py files for Python package structure
+    (server_dir / "src" / "__init__.py").touch()
+    (server_src_dir / "__init__.py").touch()
     
-    if config_example.exists():
-        shutil.copy2(config_example, f"{release_dir}/config.ini.example")
-        print_success("Copied config.ini.example")
+    # Create Server README
+    server_readme = f"""# Alnoor Medical Services - API Server Package
+
+## 🎯 For IT Personnel Only
+
+This folder contains the API server for multi-user deployment.
+
+**DO NOT distribute this to end users!**  
+End users only need the main installer + config.ini
+
+---
+
+## 📋 What You Need
+
+1. Main server PC (Windows 10/11 or Windows Server)
+2. Python 3.8+ installed
+3. Network connectivity
+4. 20 minutes of setup time
+
+---
+
+## 🚀 Quick Setup
+
+### Step 1: Install Python (if not already installed)
+1. Download: https://www.python.org/downloads/
+2. Install with **"Add Python to PATH"** checked ✓
+3. Verify: Open cmd, type `python --version`
+
+### Step 2: Copy This Folder to Server PC
+Copy entire `Server/` folder to: `C:\\AlnoorServer\\`
+
+### Step 3: Start the Server
+1. Navigate to `C:\\AlnoorServer\\`
+2. Double-click `start_server.bat`
+3. Note the IP address shown (e.g., 192.168.1.10)
+4. Keep the window open!
+
+### Step 4: Configure Firewall
+Run in PowerShell (as Administrator):
+```powershell
+New-NetFirewallRule -DisplayName "Alnoor API Server" -Direction Inbound -LocalPort 5000 -Protocol TCP -Action Allow
+```
+
+### Step 5: Test Server
+Open browser: http://localhost:5000/health  
+Should see: {{"status": "healthy"}}
+
+---
+
+## 👥 Client PC Configuration
+
+On each user's PC:
+
+1. Install main app: `AlnoorMedicalServices-Setup-v{version}.exe`
+
+2. Create config.ini at:
+   `C:\\Program Files\\Alnoor Medical Services\\config.ini`
+
+3. Content:
+   ```ini
+   [server]
+   mode = client
+   server_url = http://192.168.1.10:5000
+   ```
+   (Replace 192.168.1.10 with your server's IP)
+
+4. Launch app - Done!
+
+---
+
+## 📚 Full Documentation
+
+See: **API_SERVER_SETUP_GUIDE.md** (in this folder)
+
+Complete step-by-step instructions with troubleshooting.
+
+---
+
+## 🧪 Testing
+
+Run test script:
+```cmd
+cd C:\\AlnoorServer
+python test_api_server.py http://192.168.1.10:5000
+```
+
+Should show: ✅ All tests passed!
+
+---
+
+## 🆘 Common Issues
+
+**"Python not recognized"**
+- Reinstall Python with "Add to PATH" checked
+
+**"Cannot connect from client"**
+- Check firewall rule (Step 4)
+- Verify server is running
+- Ping server: `ping 192.168.1.10`
+
+**"Port 5000 already in use"**
+- Another app is using port 5000
+- See troubleshooting in API_SERVER_SETUP_GUIDE.md
+
+---
+
+## 📞 Need Help?
+
+Full guide: API_SERVER_SETUP_GUIDE.md  
+Support: {APP_URL}
+
+---
+
+**Remember**: Keep server running during work hours!
+Press Ctrl+C in server window to stop.
+"""
+    
+    (server_dir / "README.txt").write_text(server_readme, encoding='utf-8')
+    print_success("Created Server/README.txt")
+    
+    # Create Documentation folder
+    docs_dir = Path(f"{release_dir}/Documentation")
+    docs_dir.mkdir(exist_ok=True)
+    
+    # Copy all documentation
+    doc_files = [
+        "API_SERVER_QUICKSTART.md",
+        "SOLUTION_CONCURRENT_USERS.md",
+        "SOLUTION_LIMITED_ACCESS.md",
+        "SIMPLE_INSTALLATION_GUIDE.md",
+        "NETWORK_DEPLOYMENT_GUIDE.md",
+        "NETWORK_DEPLOYMENT_QUICKSTART.md",
+        "VISUAL_INSTALLATION_GUIDE.md",
+        "POSTGRESQL_MIGRATION_GUIDE.md",
+        "config.ini.example",
+    ]
+    
+    for doc in doc_files:
+        src_path = Path(doc)
+        if src_path.exists():
+            shutil.copy2(src_path, docs_dir / doc)
+            print_success(f"Copied {doc} to Documentation/")
+    
+    # Create DEPLOYMENT_OPTIONS.md comparison guide
+    deployment_options = f"""# Deployment Options - Quick Comparison
+
+## Choose Your Deployment Method
+
+This guide helps you choose the best deployment for your needs.
+
+---
+
+## 📊 Quick Comparison Table
+
+| Feature | Single PC | RDP Multi-User | API Server Multi-User |
+|---------|-----------|----------------|----------------------|
+| **Setup Time** | 5 min | 30 min | 30 min |
+| **Concurrent Users** | 1 per PC | 2-4 | 4-10+ |
+| **User Experience** | Native app | Remote Desktop | Native app on own PC ✅ |
+| **IT Skills Needed** | None | Basic | Basic + Python |
+| **Server Requirements** | None | Windows PC | Windows PC + Python |
+| **Best For** | Individual use | Small team (2-4) | Office (4-10+ users) |
+
+---
+
+## Option 1: Single PC Deployment
+
+**What it is**: Each user installs the app on their own PC with their own separate database.
+
+**When to use**:
+- ✅ One user per PC
+- ✅ No data sharing needed
+- ✅ Simplest setup
+
+**Setup**:
+1. Run installer on each PC
+2. Done!
+
+**Advantages**:
+- ✅ Instant setup
+- ✅ No network dependency
+- ✅ No server needed
+
+**Disadvantages**:
+- ❌ No data sharing between users
+- ❌ Each PC has separate database
+
+---
+
+## Option 2: RDP Multi-User Deployment
+
+**What it is**: Install app on one "server" PC. Users Remote Desktop to that PC to use the app.
+
+**When to use**:
+- ✅ 2-4 concurrent users
+- ✅ You have a dedicated PC that can stay on
+- ✅ Users okay with Remote Desktop
+- ✅ Simple setup (no Python needed)
+
+**Setup**:
+1. Install app on server PC
+2. Run `Setup-MultiUser.ps1` (choose Option 2 or 3)
+3. Users connect via Remote Desktop
+
+**Advantages**:
+- ✅ Simple setup (no programming knowledge)
+- ✅ No network share issues
+- ✅ Instant data synchronization
+- ✅ Works with any Windows PC
+
+**Disadvantages**:
+- ❌ Limited to 2-4 concurrent users (Windows limit)
+- ❌ Users work via Remote Desktop (not their own desktop)
+- ❌ Server PC must stay on during work hours
+
+**See**: Setup-MultiUser.ps1 script in main release folder
+
+---
+
+## Option 3: API Server Multi-User Deployment ⭐
+
+**What it is**: Server PC runs a Python API server. Each user installs the app on their OWN PC and connects to server via HTTP.
+
+**When to use**:
+- ✅ 4-10+ concurrent users
+- ✅ Users want to work on their own PCs ✅
+- ✅ Better user experience
+- ✅ Scalable solution
+
+**Setup**:
+1. IT person: Install Python on server
+2. IT person: Copy Server/ folder, run start_server.bat
+3. IT person: Open firewall port 5000
+4. Users: Install app + create config.ini
+
+**Advantages**:
+- ✅ Each user works on their own PC (best UX!)
+- ✅ Supports 10+ concurrent users
+- ✅ No Remote Desktop needed
+- ✅ Scalable architecture
+- ✅ No network share issues
+
+**Disadvantages**:
+- ❌ Requires Python installation on server
+- ❌ Slightly more complex setup
+- ❌ Server must stay running during work hours
+
+**See**: Server/API_SERVER_SETUP_GUIDE.md
+
+---
+
+## Decision Tree
+
+```
+Do you need multiple users to share data?
+│
+├─ NO → Use Option 1 (Single PC)
+│       Simplest, works perfectly!
+│
+└─ YES → How many concurrent users?
+         │
+         ├─ 2-4 users → Option 2 (RDP)
+         │              OR Option 3 (API Server)
+         │              
+         │              Choose RDP if:
+         │              - Prefer simpler setup
+         │              - Users okay with Remote Desktop
+         │              
+         │              Choose API Server if:
+         │              - Users want own PCs ✅
+         │              - Comfortable with Python
+         │
+         └─ 4-10+ users → Option 3 (API Server)
+                          Best performance & UX
+```
+
+---
+
+## Network Share (NOT RECOMMENDED) ⚠️
+
+**Why not network shares?**
+
+You might think: "Just put the database on a shared drive!"
+
+**This causes data corruption** with concurrent users:
+- Only 1 user's changes saved
+- Users overwrite each other
+- Data loss / corruption
+
+**Technical reason**: SQLite + Network file systems = Race conditions
+
+**If you tried this and had problems**: That's why! Use Option 2 or 3 instead.
+
+See: SOLUTION_CONCURRENT_USERS.md for full technical explanation
+
+---
+
+## Which Option Did You Choose?
+
+### ✅ Option 1 (Single PC):
+- Run installer
+- Launch app
+- Start working!
+
+### ✅ Option 2 (RDP):
+- See: Setup-MultiUser.ps1
+- See: SIMPLE_INSTALLATION_GUIDE.md
+
+### ✅ Option 3 (API Server):
+- Give Server/ folder to IT person
+- See: Server/API_SERVER_SETUP_GUIDE.md
+- See: API_SERVER_QUICKSTART.md
+
+---
+
+**Still not sure?**
+
+- **Small office (1-4 users)**: Start with Option 2 (RDP) - simplest!
+- **Growing office (4-10 users)**: Use Option 3 (API Server) - better long-term!
+- **Individual users**: Use Option 1 (Single PC) - perfect as-is!
+
+---
+
+**Need more help?**
+
+All detailed guides are in Documentation/ folder:
+- SIMPLE_INSTALLATION_GUIDE.md (non-technical)
+- API_SERVER_SETUP_GUIDE.md (IT person)
+- SOLUTION_CONCURRENT_USERS.md (technical details)
+"""
+    
+    (docs_dir / "DEPLOYMENT_OPTIONS.md").write_text(deployment_options, encoding='utf-8')
+    print_success("Created DEPLOYMENT_OPTIONS.md")
+    
+    # Copy Setup-MultiUser.ps1 if it exists
+    if Path("Setup-MultiUser.ps1").exists():
+        shutil.copy2("Setup-MultiUser.ps1", f"{release_dir}/Setup-MultiUser.ps1")
+        print_success("Copied Setup-MultiUser.ps1 to release root")
     
     # Create Release Notes
     release_notes = f"""===========================================
@@ -573,10 +1034,31 @@ Version {version}
 
 Build Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
-FEATURES
---------
+NEW IN THIS VERSION
+-------------------
 
-✨ Multi-User LAN Support
+🎉 API Server Multi-User Support!
+   - NEW: Each user works on their own PC
+   - NEW: No Remote Desktop required
+   - NEW: Supports 4-10+ concurrent users
+   - NEW: True client-server architecture
+
+✨ Multiple Deployment Options
+   - Single PC (standalone)
+   - RDP Multi-User (2-4 users)
+   - API Server Multi-User (4-10+ users)
+   - All options in ONE package!
+
+📦 Improved Packaging
+   - Server/ folder with all API server files
+   - Documentation/ folder with all guides
+   - Clear folder structure
+   - Setup scripts included
+
+EXISTING FEATURES
+-----------------
+
+✨ Multi-User LAN Support (RDP)
    - SQLite WAL mode for concurrent access
    - Multiple users can work simultaneously
    - Automatic conflict resolution
@@ -596,13 +1078,74 @@ FEATURES
    - Application in Program Files (updated safely)
    - Automatic migrations on first launch
 
-INSTALLATION
-------------
+INSTALLATION OPTIONS
+--------------------
 
-✅ Clean installation (no data migration needed)
-✅ Database created automatically on first run
-✅ Multi-user support (WAL mode)
-✅ Update-safe database location
+1. SINGLE PC
+   ✅ Run installer
+   ✅ Launch app
+   ✅ Start working!
+
+2. RDP MULTI-USER (2-4 users)
+   ✅ Install on server PC
+   ✅ Run Setup-MultiUser.ps1
+   ✅ Users Remote Desktop to server
+
+3. API SERVER MULTI-USER (4-10+ users)
+   ✅ Give Server/ folder to IT person
+   ✅ IT person runs start_server.bat
+   ✅ Users install app + config.ini
+   ✅ Everyone works on own PC!
+
+See README.txt and DEPLOYMENT_OPTIONS.md for details.
+
+IMPORTANT NOTES
+---------------
+
+⚠️ Network Shares NOT Supported
+   Using database on network share with concurrent
+   users causes data corruption. Use RDP or API
+   Server deployment instead.
+
+✅ Backward Compatible
+   Existing single-PC installations continue to work.
+   No migration needed.
+
+✅ Fresh Database
+   Creates NEW empty database on first run.
+   Your data is safe and isolated.
+
+SYSTEM REQUIREMENTS
+-------------------
+
+Client PC:
+- Windows 10 or later (64-bit)
+- 4 GB RAM minimum
+- 200 MB free disk space
+
+Server PC (API mode only):
+- Windows 10/11 or Windows Server
+- Python 3.8 or higher
+- Network connectivity
+
+DOCUMENTATION
+-------------
+
+📁 Server/
+   - API_SERVER_SETUP_GUIDE.md (for IT person)
+   - start_server.bat (one-click startup)
+   - test_api_server.py (verify installation)
+
+📁 Documentation/
+   - DEPLOYMENT_OPTIONS.md (compare methods)
+   - API_SERVER_QUICKSTART.md (quick guide)
+   - SIMPLE_INSTALLATION_GUIDE.md (non-technical)
+   - SOLUTION_CONCURRENT_USERS.md (technical)
+   - config.ini.example (all configurations)
+
+📄 Root:
+   - README.txt (start here!)
+   - Setup-MultiUser.ps1 (RDP setup wizard)
 
 For questions or support:
 GitHub: {APP_URL}

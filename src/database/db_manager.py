@@ -3,6 +3,8 @@ Database Manager for Alnoor Medical Services Tracking App.
 
 Handles database connection, session management, initialization,
 and provides helper methods for common database operations.
+
+Supports both local SQLite mode and remote API client mode.
 """
 
 import os
@@ -33,6 +35,36 @@ from .models import (
 
 # Type variable for generic operations
 T = TypeVar('T')
+
+
+def get_database_instance(db_path: Optional[str] = None):
+    """
+    Factory function to get the appropriate database instance.
+    Returns DatabaseClient if configured for API mode, otherwise DatabaseManager.
+    """
+    # Check for API client mode in config
+    if db_path is None:
+        if getattr(sys, 'frozen', False):
+            config_path = Path(sys.executable).parent / 'config.ini'
+        else:
+            config_path = Path(__file__).parent.parent.parent / 'config.ini'
+        
+        if config_path.exists():
+            config = configparser.ConfigParser()
+            config.read(config_path)
+            
+            # Check for API server mode
+            if 'server' in config:
+                mode = config['server'].get('mode', 'local')
+                if mode == 'client':
+                    # Use API client instead of direct database
+                    server_url = config['server'].get('server_url', 'http://localhost:5000')
+                    print(f"Using API client mode: {server_url}")
+                    from .db_client import DatabaseClient
+                    return DatabaseClient(server_url)
+    
+    # Default: use local SQLite database
+    return DatabaseManager(db_path)
 
 
 class DatabaseManager:
