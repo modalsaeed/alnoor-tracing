@@ -51,7 +51,7 @@ def get_database_instance(db_path: Optional[str] = None):
         
         if config_path.exists():
             config = configparser.ConfigParser()
-            config.read(config_path)
+            config.read(config_path, encoding='utf-8')
             
             # Check for API server mode
             if 'server' in config:
@@ -103,7 +103,7 @@ class DatabaseManager:
                 config_path = self._get_config_path()
                 if config_path and config_path.exists():
                     config = configparser.ConfigParser()
-                    config.read(config_path)
+                    config.read(config_path, encoding='utf-8')
                     if 'database' in config and 'path' in config['database']:
                         db_path = config['database']['path']
                         print(f"Using database from config.ini: {db_path}")

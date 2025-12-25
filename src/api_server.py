@@ -14,6 +14,7 @@ from datetime import datetime
 import sys
 import os
 import traceback
+import logging
 from pathlib import Path
 
 # Add src directory to path
@@ -33,14 +34,107 @@ CORS(app)  # Enable CORS for all routes
 # Initialize database manager
 db_manager = None
 
+# Logging flag (can be enabled via environment variable)
+ENABLE_LOGGING = os.environ.get('ALNOOR_ENABLE_LOGGING', 'false').lower() == 'true'
+
+# Track active connections
+active_clients = set()
+
+@app.before_request
+def log_request_info():
+    """Log incoming request details"""
+    if ENABLE_LOGGING:
+        client_ip = request.remote_addr
+        # Track new client connections
+        if client_ip not in active_clients:
+            active_clients.add(client_ip)
+            app.logger.info(f"🔌 NEW CLIENT CONNECTED: {client_ip}")
+            app.logger.info(f"   Total active clients: {len(active_clients)}")
+        
+        # Log request details
+        method = request.method
+        path = request.path
+        app.logger.info(f"📨 [{client_ip}] {method} {path}")
+        
+        # Store request start time for duration calculation
+        request.start_time = datetime.now()
+
+@app.after_request
+def log_response_info(response):
+    """Log response details"""
+    if ENABLE_LOGGING and hasattr(request, 'start_time'):
+        duration = (datetime.now() - request.start_time).total_seconds()
+        client_ip = request.remote_addr
+        method = request.method
+        path = request.path
+        status = response.status_code
+        
+        # Format status with emoji
+        if status < 300:
+            status_emoji = "✅"
+        elif status < 400:
+            status_emoji = "➡️"
+        elif status < 500:
+            status_emoji = "⚠️"
+        else:
+            status_emoji = "❌"
+        
+        app.logger.info(f"📤 [{client_ip}] {method} {path} → {status_emoji} {status} ({duration:.3f}s)")
+    
+    return response
+
+def setup_logging():
+    """Configure logging for the API server"""
+    if ENABLE_LOGGING:
+        # Create logs directory if it doesn't exist
+        logs_dir = Path(__file__).parent.parent / 'logs'
+        logs_dir.mkdir(exist_ok=True)
+        
+        # Create log filename with timestamp
+        log_filename = logs_dir / f"api_server_{datetime.now().strftime('%Y%m%d')}.log"
+        
+        # Configure logging to both console and file
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s | %(message)s',
+            datefmt='%H:%M:%S',
+            handlers=[
+                logging.StreamHandler(),  # Console output
+                logging.FileHandler(log_filename, encoding='utf-8')  # File output
+            ]
+        )
+        app.logger.setLevel(logging.INFO)
+        print(f"📝 Logging enabled - saving to: {log_filename.absolute()}")
+        app.logger.info("="*70)
+        app.logger.info("🚀 API SERVER STARTED")
+        app.logger.info(f"📅 Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        app.logger.info("="*70)
+    else:
+        # Disable Flask default logger and Waitress logger
+        log = logging.getLogger('werkzeug')
+        log.setLevel(logging.ERROR)
+        waitress_log = logging.getLogger('waitress')
+        waitress_log.setLevel(logging.ERROR)
+
+def log_request(endpoint_name, details=""):
+    """Log API request if logging is enabled"""
+    if ENABLE_LOGGING:
+        client_ip = request.remote_addr
+        method = request.method
+        app.logger.info(f"{client_ip} - {method} {endpoint_name} {details}")
+
+def log_success(message):
+    """Log successful operation if logging is enabled"""
+    if ENABLE_LOGGING:
+        app.logger.info(f"✓ {message}")
+
 
 def init_db():
     """Initialize database connection"""
     global db_manager
     db_manager = DatabaseManager()
     print("✅ Database initialized successfully")
-
-
+    print(f"📁 Database location: {db_manager.db_path}")
 def serialize_model(obj):
     """Convert SQLAlchemy model to dictionary"""
     if obj is None:
@@ -66,10 +160,12 @@ def serialize_list(objects):
 @app.route('/health', methods=['GET'])
 def health_check():
     """Check if server is running"""
+    log_request('/health')
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.now().isoformat(),
-        'version': '1.0.5'
+        'version': '1.0.7',
+        'logging': 'enabled' if ENABLE_LOGGING else 'disabled'
     })
 
 
@@ -81,6 +177,7 @@ def get_products():
     try:
         with db_manager.get_session() as session:
             products = session.query(Product).all()
+        log_request('/products', f"- Retrieved {len(products)} products")
         return jsonify(serialize_list(products))
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -122,6 +219,7 @@ def create_product():
                 description=data.get('description')
             )
             
+            log_success(f"Created product: {reference} - {name}")
             session.add(product)
             session.commit()
             
@@ -163,6 +261,7 @@ def create_products_batch():
                 products.append(product)
             
             session.bulk_save_objects(products, return_defaults=True)
+            log_success(f"Batch created {len(products)} products")
             session.commit()
             
             return jsonify({
@@ -594,6 +693,25 @@ def create_distribution_location():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/distribution_locations/<int:location_id>', methods=['DELETE'])
+def delete_distribution_location(location_id):
+    """Delete distribution location"""
+    try:
+        with db_manager.get_session() as session:
+            location = session.get(DistributionLocation, location_id)
+            if not location:
+                return jsonify({'error': 'Distribution location not found'}), 404
+            
+            session.delete(location)
+            session.commit()
+            
+        return jsonify({'message': f'Distribution location {location_id} deleted successfully'}), 200
+    except Exception as e:
+        print(f"ERROR deleting distribution location: {e}", file=sys.stderr)
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 # ==================== MEDICAL CENTRE ENDPOINTS ====================
 
 @app.route('/medical_centres', methods=['GET'])
@@ -635,6 +753,25 @@ def create_medical_centre():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/medical_centres/<int:centre_id>', methods=['DELETE'])
+def delete_medical_centre(centre_id):
+    """Delete medical centre"""
+    try:
+        with db_manager.get_session() as session:
+            centre = session.get(MedicalCentre, centre_id)
+            if not centre:
+                return jsonify({'error': 'Medical centre not found'}), 404
+            
+            session.delete(centre)
+            session.commit()
+            
+        return jsonify({'message': f'Medical centre {centre_id} deleted successfully'}), 200
+    except Exception as e:
+        print(f"ERROR deleting medical centre: {e}", file=sys.stderr)
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 # ==================== PATIENT COUPON ENDPOINTS ====================
 
 @app.route('/patient_coupons', methods=['GET'])
@@ -643,6 +780,7 @@ def get_patient_coupons():
     try:
         with db_manager.get_session() as session:
             coupons = session.query(PatientCoupon).all()
+        log_request('/patient_coupons', f"- Retrieved {len(coupons)} coupons")
         return jsonify(serialize_list(coupons))
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -741,6 +879,7 @@ def create_patient_coupons_batch():
                 coupons.append(coupon)
             
             session.bulk_save_objects(coupons, return_defaults=True)
+            log_success(f"Batch created {len(coupons)} coupons")
             session.commit()
             
             return jsonify({
@@ -793,12 +932,31 @@ def get_inventory_statistics():
 
 # ==================== SERVER STARTUP ====================
 
+def get_local_ip():
+    """Get the local IP address of the server"""
+    import socket
+    try:
+        # Create a socket connection to determine local IP
+        # This doesn't actually connect, just determines which interface would be used
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+        return local_ip
+    except Exception:
+        # Fallback to localhost if unable to determine
+        return "127.0.0.1"
+
+
 def main():
     """Start the API server"""
     print("=" * 60)
     print("Alnoor Medical Services - API Server")
     print("=" * 60)
     print()
+    
+    # Setup logging first
+    setup_logging()
     
     # Initialize database
     init_db()
@@ -807,19 +965,47 @@ def main():
     host = os.environ.get('ALNOOR_API_HOST', '0.0.0.0')
     port = int(os.environ.get('ALNOOR_API_PORT', 5000))
     
-    print(f"🚀 Starting PRODUCTION server on http://{host}:{port}")
-    print(f"📊 Health check: http://{host}:{port}/health")
+    # Get actual local IP address
+    local_ip = get_local_ip()
+    
+    print(f"🚀 Starting PRODUCTION server...")
+    print(f"📍 Server Address: http://{local_ip}:{port}")
+    print(f"📊 Health Check: http://{local_ip}:{port}/health")
     print()
     print("ℹ️  Server Mode: Production (Multi-user support enabled)")
     print("ℹ️  Max Concurrent Users: 10+ simultaneous connections")
+    print("ℹ️  Threads: 12 | Connection Limit: 100")
     print()
-    print("To stop the server, press Ctrl+C")
+    
+    if ENABLE_LOGGING:
+        print("📝 Request Logging: ✅ ENABLED")
+        print("   • Client connections tracked")
+        print("   • Request/response logged with timing")
+        print("   • Logs: logs/api_server_YYYYMMDD.log")
+    else:
+        print("📝 Request Logging: ⚪ DISABLED")
+        print("   To enable: set ALNOOR_ENABLE_LOGGING=true before starting")
+        print("   Example (PowerShell): $env:ALNOOR_ENABLE_LOGGING='true'; python src\\api_server.py")
+    print()
+    print("📋 CLIENT CONFIGURATION:")
+    print(f"   config.ini setting: server_url = http://{local_ip}:{port}")
+    print()
+    print("⌨️  Press Ctrl+C to stop server")
     print("=" * 60)
     print()
+    
+    if ENABLE_LOGGING:
+        app.logger.info(f"🌐 Server listening on {local_ip}:{port}")
+        app.logger.info(f"⏳ Waiting for client connections...")
+        app.logger.info("")
     
     try:
         # Use Waitress production server (Windows-friendly)
         from waitress import serve
+        # Note: Waitress will still show 0.0.0.0 in its own logs, but our logs show real IP
+        if ENABLE_LOGGING:
+            print(f"✅ Server running on {local_ip}:{port}")
+            print("   (Waitress may show 0.0.0.0 - this is normal, clients use {})\n".format(local_ip))
         serve(app, host=host, port=port, threads=12, channel_timeout=300, connection_limit=100)
     except ImportError:
         # Fallback to Flask dev server if Waitress not installed

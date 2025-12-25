@@ -37,8 +37,11 @@ class MainWindow(QMainWindow):
     
     def init_ui(self):
         """Initialize the user interface."""
-        self.setWindowTitle("Alnoor Medical Services - Database Tracking System")
-        self.setMinimumSize(1200, 800)
+        # Determine connection mode
+        connection_mode = self.get_connection_mode()
+        window_title = f"Alnoor Medical Services - Database Tracking System [{connection_mode}]"
+        self.setWindowTitle(window_title)
+        self.setMinimumSize(1024, 700)
         
         # Create menu bar
         self.create_menu_bar()
@@ -168,6 +171,17 @@ class MainWindow(QMainWindow):
         
         return widget
     
+    def get_connection_mode(self):
+        """Detect if running in local or client mode."""
+        # Check if db_manager is a DatabaseClient (API mode)
+        try:
+            from src.database.db_client import DatabaseClient
+            if isinstance(self.db_manager, DatabaseClient):
+                return f"API Client: {self.db_manager.server_url}"
+        except ImportError:
+            pass
+        return "Local Database"
+    
     def create_status_bar(self):
         """Create status bar with database info."""
         self.status_bar = QStatusBar()
@@ -184,8 +198,13 @@ class MainWindow(QMainWindow):
     def update_status(self):
         """Update status bar with current database info."""
         try:
+            # Add connection mode indicator
+            connection_mode = self.get_connection_mode()
+            mode_indicator = "🌐 API" if "API Client" in connection_mode else "💾 Local"
+            
             db_info = self.db_manager.get_database_info()
             status_text = (
+                f"{mode_indicator} | "
                 f"Products: {db_info['products_count']} | "
                 f"POs: {db_info['purchase_orders_count']} | "
                 f"Coupons: {db_info['coupons_count']} "
@@ -197,11 +216,24 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage(f"Error updating status: {str(e)}")
     
     def center_window(self):
-        """Center window on screen."""
+        """Center window on screen and resize to fit if needed."""
         from PyQt6.QtGui import QScreen
         screen = QScreen.availableGeometry(QApplication.primaryScreen())
-        x = (screen.width() - self.width()) // 2
-        y = (screen.height() - self.height()) // 2
+        
+        # Calculate desired size (80% of screen or minimum size, whichever is larger)
+        desired_width = max(self.minimumWidth(), int(screen.width() * 0.8))
+        desired_height = max(self.minimumHeight(), int(screen.height() * 0.85))
+        
+        # Don't exceed screen size
+        final_width = min(desired_width, screen.width())
+        final_height = min(desired_height, screen.height())
+        
+        # Resize window
+        self.resize(final_width, final_height)
+        
+        # Center on screen
+        x = (screen.width() - final_width) // 2
+        y = (screen.height() - final_height) // 2
         self.move(x, y)
     
     def backup_database(self):

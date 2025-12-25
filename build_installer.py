@@ -81,7 +81,7 @@ def check_command(command):
 def auto_detect_version():
     """Auto-detect version from VERSION file or default to 1.0.1."""
     if Path("VERSION").exists():
-        version = Path("VERSION").read_text().strip()
+        version = Path("VERSION").read_text(encoding='utf-8').strip()
         print(f"{Colors.INFO}Auto-detected version from VERSION file: {version}{Colors.RESET}")
         return version
     else:
@@ -177,7 +177,7 @@ def verify_database_isolation():
     print_step("Step 3/9: Verifying database isolation configuration...")
     
     # Check spec file
-    spec_content = Path("alnoor.spec").read_text()
+    spec_content = Path("alnoor.spec").read_text(encoding='utf-8')
     if "'data'" in spec_content and "datas=" in spec_content:
         print_error("ERROR: data folder is included in alnoor.spec!")
         print_error("The development database would be packaged with the installer.")
@@ -186,7 +186,7 @@ def verify_database_isolation():
     print_success("Spec file does not include data folder")
     
     # Check db_manager.py
-    db_manager_content = Path("src/database/db_manager.py").read_text()
+    db_manager_content = Path("src/database/db_manager.py").read_text(encoding='utf-8')
     if "getattr(sys, 'frozen', False)" in db_manager_content:
         print_success("Database manager has environment detection")
     else:
@@ -442,7 +442,7 @@ end;
 """
     
     iss_path = "installer_script.iss"
-    Path(iss_path).write_text(iss_content)
+    Path(iss_path).write_text(iss_content, encoding='utf-8')
     print_success("Created Inno Setup script")
     
     # Run Inno Setup
@@ -670,9 +670,13 @@ For setup help:
         "src/database/models.py": server_src_dir / "models.py",
         "src/database/db_manager.py": server_src_dir / "db_manager.py",
         "start_server.bat": server_dir / "start_server.bat",
+        "start_server_with_logs.bat": server_dir / "start_server_with_logs.bat",
         "start_server.py": server_dir / "start_server.py",
         "test_api_server.py": server_dir / "test_api_server.py",
+        "check_server_db.py": server_dir / "check_server_db.py",
         "API_SERVER_SETUP_GUIDE.md": server_dir / "API_SERVER_SETUP_GUIDE.md",
+        "CLIENT_SERVER_TESTING_GUIDE.md": server_dir / "CLIENT_SERVER_TESTING_GUIDE.md",
+        "QUICK_SETUP_CARD.md": server_dir / "QUICK_SETUP_CARD.md",
     }
     
     for src, dest in api_server_files.items():
@@ -1175,7 +1179,7 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         checksum_content += f"{file_hash}  {file_path.name}\n"
         print(f"    {Colors.GRAY}{file_path.name}:{Colors.RESET} {Colors.SUCCESS}{file_hash[:16]}...{Colors.RESET}")
     
-    Path(f"{release_dir}/CHECKSUMS.txt").write_text(checksum_content)
+    Path(f"{release_dir}/CHECKSUMS.txt").write_text(checksum_content, encoding='utf-8')
     print_success("Created CHECKSUMS.txt")
     return True
 
