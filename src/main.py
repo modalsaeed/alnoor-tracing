@@ -3,15 +3,28 @@
 import sys
 from pathlib import Path
 
-# Add src directory to path for imports
-src_path = Path(__file__).parent
-sys.path.insert(0, str(src_path))
+# Add project root to path for imports
+project_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(project_root))
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtCore import Qt
 
-from src.database.db_manager import get_db_manager
+from src.database.db_manager import get_db_manager, get_connection_debug_info
 from src.ui.main_window import MainWindow
+
+
+def should_show_debug_popup():
+    """Check if debug popup should be shown on startup."""
+    import configparser
+    config_path = Path(__file__).parent.parent / 'config.ini'
+    
+    if config_path.exists():
+        config = configparser.ConfigParser()
+        config.read(config_path, encoding='utf-8')
+        if 'debug' in config:
+            return config['debug'].get('show_connection_debug', 'true').lower() == 'true'
+    return True  # Default: show debug info
 
 
 def main():
@@ -27,6 +40,18 @@ def main():
     try:
         # Initialize database
         db_manager = get_db_manager()
+        
+        # Show connection debug info on startup (if enabled in config)
+        if should_show_debug_popup():
+            debug_info = get_connection_debug_info()
+            if debug_info:
+                msg = QMessageBox()
+                msg.setIcon(QMessageBox.Icon.Information)
+                msg.setWindowTitle("Connection Status")
+                msg.setText("Application Startup - Connection Debug Info")
+                msg.setInformativeText("\n".join(debug_info))
+                msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+                msg.exec()
         
         # Create and show main window
         window = MainWindow(db_manager)

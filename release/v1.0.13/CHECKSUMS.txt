@@ -1,0 +1,8 @@
+SHA256 Checksums for Alnoor Medical Services v1.0.13
+Generated: 2025-12-25 10:16:02
+
+577ab6da9f862ab4863f4f0339e7bac74029757d78ffdf61900813c0d7c05cb2  AlnoorMedicalServices-Portable.exe
+efa1f9026f50d1e67819c842d78a4f06e6b5eec775dba34e7a569aed61150d4f  AlnoorMedicalServices-Setup-v1.0.13.exe
+e0051314ad9a7df13b4f0649c58ab869949e4094a79df015bf956fd588848c29  README.txt
+bc9d712e43a5b8aff768580973ba078777a1491349a3f045d517c27ad4022514  RELEASE_NOTES.txt
+09bfd370b859ce8b6bdfd1dd72119ed393a3c2e159c3b81abc1d534bbdb816c2  Setup-MultiUser.ps1

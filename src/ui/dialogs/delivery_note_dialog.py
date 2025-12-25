@@ -17,6 +17,7 @@ from PyQt6.QtGui import QFont
 from src.database.db_manager import DatabaseManager
 from src.database.models import PatientCoupon, MedicalCentre, DistributionLocation, Product, PurchaseOrder
 from src.utils import Colors, StyleSheets
+from src.utils.model_helpers import get_attr, get_id, get_name, get_nested_attr
 
 
 class DeliveryNoteDialog(QDialog):
@@ -166,27 +167,27 @@ class DeliveryNoteDialog(QDialog):
     def load_filter_data(self):
         """Load data for filters."""
         try:
-            with self.db_manager.get_session() as session:
-                # Load health centres
-                centres = session.query(MedicalCentre).order_by(MedicalCentre.name).all()
-                self.centre_combo.addItem("-- Select Health Centre --", None)
-                for centre in centres:
-                    self.centre_combo.addItem(centre.name, centre.id)
-                
-                # Load distribution locations
-                locations = session.query(DistributionLocation).order_by(DistributionLocation.name).all()
-                self.location_combo.addItem("-- Select Distribution Location --", None)
-                for location in locations:
-                    self.location_combo.addItem(location.name, location.id)
-                
-                # Load purchase orders
-                pos = session.query(PurchaseOrder).order_by(PurchaseOrder.po_reference).all()
-                self.po_combo.addItem("-- Select PO Reference --", None)
-                for po in pos:
-                    display_text = f"{po.po_reference}"
-                    if po.product:
-                        display_text += f" ({po.product.name})"
-                    self.po_combo.addItem(display_text, po.id)
+            # Load health centres
+            centres = sorted(self.db_manager.get_all(MedicalCentre), key=lambda x: get_name(x))
+            self.centre_combo.addItem("-- Select Health Centre --", None)
+            for centre in centres:
+                self.centre_combo.addItem(get_name(centre), get_id(centre))
+            
+            # Load distribution locations
+            locations = sorted(self.db_manager.get_all(DistributionLocation), key=lambda x: get_name(x))
+            self.location_combo.addItem("-- Select Distribution Location --", None)
+            for location in locations:
+                self.location_combo.addItem(get_name(location), get_id(location))
+            
+            # Load purchase orders
+            pos = sorted(self.db_manager.get_all(PurchaseOrder), key=lambda x: get_attr(x, 'po_reference', ''))
+            self.po_combo.addItem("-- Select PO Reference --", None)
+            for po in pos:
+                display_text = f"{get_attr(po, 'po_reference', 'N/A')}"
+                product_name = get_nested_attr(po, 'product.name')
+                if product_name:
+                    display_text += f" ({product_name})"
+                self.po_combo.addItem(display_text, get_id(po))
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load filter data: {str(e)}")
     
@@ -209,50 +210,53 @@ class DeliveryNoteDialog(QDialog):
             return
         
         try:
-            with self.db_manager.get_session() as session:
-                # Get unverified coupons matching filters
-                query = session.query(PatientCoupon).filter(
-                    PatientCoupon.verified == False,
-                    PatientCoupon.medical_centre_id == centre_id,
-                    PatientCoupon.date_received >= datetime.combine(date_from, datetime.min.time()),
-                    PatientCoupon.date_received <= datetime.combine(date_to, datetime.max.time())
+            # Get all coupons and filter
+            all_coupons = self.db_manager.get_all(PatientCoupon)
+            date_from_dt = datetime.combine(date_from, datetime.min.time())
+            date_to_dt = datetime.combine(date_to, datetime.max.time())
+            
+            coupons = [
+                c for c in all_coupons
+                if get_attr(c, 'verified', True) == False
+                and get_attr(c, 'medical_centre_id') == centre_id
+                and get_attr(c, 'date_received')
+                and date_from_dt <= get_attr(c, 'date_received') <= date_to_dt
+                and (not location_id or get_attr(c, 'distribution_location_id') == location_id)
+            ]
+            
+            # Group by product
+            product_groups = {}
+            for coupon in coupons:
+                product_id = get_attr(coupon, 'product_id')
+                if product_id:
+                    if product_id not in product_groups:
+                        product_groups[product_id] = []
+                    product_groups[product_id].append(coupon)
+            
+            # For simplicity, we'll handle one product at a time
+            # If multiple products, warn the user
+            if len(product_groups) > 1:
+                QMessageBox.warning(
+                    self,
+                    "Multiple Products",
+                    f"Found coupons for {len(product_groups)} different products.\n"
+                    "Delivery notes are generated per product.\n"
+                    "Please generate separate delivery notes for each product."
                 )
-                
-                # Add distribution location filter if selected
-                if location_id:
-                    query = query.filter(PatientCoupon.distribution_location_id == location_id)
-                
-                coupons = query.all()
-                
-                # Group by product
-                product_groups = {}
-                for coupon in coupons:
-                    if coupon.product_id:
-                        if coupon.product_id not in product_groups:
-                            product_groups[coupon.product_id] = []
-                        product_groups[coupon.product_id].append(coupon)
-                
-                # For simplicity, we'll handle one product at a time
-                # If multiple products, warn the user
-                if len(product_groups) > 1:
-                    QMessageBox.warning(
-                        self,
-                        "Multiple Products",
-                        f"Found coupons for {len(product_groups)} different products.\n"
-                        "Delivery notes are generated per product.\n"
-                        "Please generate separate delivery notes for each product."
-                    )
-                    self.filtered_coupons = []
-                elif len(product_groups) == 1:
-                    product_id = list(product_groups.keys())[0]
-                    self.filtered_coupons = product_groups[product_id]
-                    self.selected_product = session.query(Product).get(product_id)
-                    self.selected_centre = session.query(MedicalCentre).get(centre_id)
-                    self.selected_location = session.query(DistributionLocation).get(location_id) if location_id else None
-                else:
-                    self.filtered_coupons = []
-                
-                self.update_preview()
+                self.filtered_coupons = []
+            elif len(product_groups) == 1:
+                product_id = list(product_groups.keys())[0]
+                self.filtered_coupons = product_groups[product_id]
+                all_products = self.db_manager.get_all(Product)
+                all_centres = self.db_manager.get_all(MedicalCentre)
+                all_locations = self.db_manager.get_all(DistributionLocation)
+                self.selected_product = next((p for p in all_products if get_id(p) == product_id), None)
+                self.selected_centre = next((c for c in all_centres if get_id(c) == centre_id), None)
+                self.selected_location = next((l for l in all_locations if get_id(l) == location_id), None) if location_id else None
+            else:
+                self.filtered_coupons = []
+            
+            self.update_preview()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to filter coupons: {str(e)}")
     
@@ -326,12 +330,12 @@ class DeliveryNoteDialog(QDialog):
         
         # Get selected PO
         try:
-            with self.db_manager.get_session() as session:
-                selected_po = session.query(PurchaseOrder).get(po_id)
-                if not selected_po:
-                    QMessageBox.warning(self, "Error", "Selected PO not found.")
-                    return
-                po_reference = selected_po.po_reference
+            all_pos = self.db_manager.get_all(PurchaseOrder)
+            selected_po = next((po for po in all_pos if get_id(po) == po_id), None)
+            if not selected_po:
+                QMessageBox.warning(self, "Error", "Selected PO not found.")
+                return
+            po_reference = get_attr(selected_po, 'po_reference', 'N/A')
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to get PO reference: {str(e)}")
             return

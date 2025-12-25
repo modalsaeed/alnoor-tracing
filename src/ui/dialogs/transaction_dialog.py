@@ -18,6 +18,7 @@ from src.database.db_manager import DatabaseManager
 from src.database.models import Product, Purchase, DistributionLocation
 from src.services.stock_service import StockService
 from src.utils.validators import validate_reference, sanitize_input
+from src.utils.model_helpers import get_attr, get_id, get_name, get_nested_attr
 
 
 class TransactionDialog(QDialog):
@@ -148,24 +149,20 @@ class TransactionDialog(QDialog):
     def load_data(self):
         """Load products, purchase orders, and distribution locations."""
         # Load products
-        with self.db_manager.get_session() as session:
-            products = session.query(Product).order_by(Product.name).all()
-            
-            self.product_combo.clear()
-            self.product_combo.addItem("-- Select Product --", None)
-            for product in products:
-                self.product_combo.addItem(
-                    f"{product.name} ({product.reference})",
-                    product.id
-                )
-            
-            # Load distribution locations
-            locations = session.query(DistributionLocation).order_by(DistributionLocation.name).all()
-            
-            self.location_combo.clear()
-            self.location_combo.addItem("-- Select Location --", None)
-            for location in locations:
-                self.location_combo.addItem(location.name, location.id)
+        products = sorted(self.db_manager.get_all(Product), key=lambda x: get_name(x))
+        self.product_combo.clear()
+        self.product_combo.addItem("-- Select Product --", None)
+        for product in products:
+            self.product_combo.addItem(
+                f"{get_name(product)} ({get_attr(product, 'reference')})",
+                get_id(product)
+            )
+        # Load distribution locations
+        locations = sorted(self.db_manager.get_all(DistributionLocation), key=lambda x: get_name(x))
+        self.location_combo.clear()
+        self.location_combo.addItem("-- Select Location --", None)
+        for location in locations:
+            self.location_combo.addItem(get_name(location), get_id(location))
     
     def on_product_changed(self):
         """Handle product selection change."""
@@ -178,19 +175,14 @@ class TransactionDialog(QDialog):
             return
         
         # Load purchases for this product (only with remaining stock)
-        with self.db_manager.get_session() as session:
-            purchases = session.query(Purchase).filter(
-                Purchase.product_id == product_id,
-                Purchase.remaining_stock > 0
-            ).order_by(Purchase.purchase_date.desc()).all()
-            
-            self.purchase_combo.clear()
-            self.purchase_combo.addItem("-- Select Supplier Purchase --", None)
-            
-            for purchase in purchases:
-                supplier = purchase.supplier_name or "Unknown Supplier"
-                display_text = f"{purchase.invoice_number} - {supplier} - Stock: {purchase.remaining_stock}/{purchase.quantity}"
-                self.purchase_combo.addItem(display_text, purchase.id)
+        purchases = [p for p in self.db_manager.get_all(Purchase) if get_attr(p, 'product_id') == product_id and get_attr(p, 'remaining_stock') > 0]
+        purchases = sorted(purchases, key=lambda x: get_attr(x, 'purchase_date'), reverse=True)
+        self.purchase_combo.clear()
+        self.purchase_combo.addItem("-- Select Supplier Purchase --", None)
+        for purchase in purchases:
+            supplier = get_attr(purchase, 'supplier_name') or "Unknown Supplier"
+            display_text = f"{get_attr(purchase, 'invoice_number')} - {supplier} - Stock: {get_attr(purchase, 'remaining_stock')}/{get_attr(purchase, 'quantity')}"
+            self.purchase_combo.addItem(display_text, get_id(purchase))
         
         # Update stock information
         self.update_stock_info(product_id)
@@ -208,40 +200,43 @@ class TransactionDialog(QDialog):
     
     def update_stock_info(self, product_id: int, purchase_id: int = None):
         """Update the stock information display."""
-        with self.db_manager.get_session() as session:
-            product = session.query(Product).get(product_id)
-            
-            # Calculate total available stock from all purchases
-            total_stock = session.query(Purchase).filter(
-                Purchase.product_id == product_id
-            ).with_entities(
-                Purchase.remaining_stock
-            ).all()
-            total_available = sum(p[0] for p in total_stock)
-            
-            info_text = f"<b>{product.name}</b><br><br>"
-            info_text += f"<b>Total Available Stock:</b> {total_available} pieces<br>"
-            
-            # If a specific purchase is selected, show its details
-            if purchase_id:
-                purchase = session.query(Purchase).get(purchase_id)
-                if purchase:
-                    info_text += f"<br><b>Selected Supplier Purchase:</b><br>"
-                    info_text += f"  Invoice: {purchase.invoice_number}<br>"
-                    info_text += f"  Supplier: {purchase.supplier_name or 'N/A'}<br>"
-                    info_text += f"  Total Quantity: {purchase.quantity} pieces<br>"
-                    info_text += f"  Remaining: {purchase.remaining_stock} pieces<br>"
-                    info_text += f"  Purchase Date: {purchase.purchase_date.strftime('%d/%m/%Y')}<br>"
-                    info_text += f"  Unit Price: {float(purchase.unit_price):.3f} BHD<br>"
-            
-            # Show stock status
-            if total_available == 0:
-                info_text += "<br><span style='color: #dc3545; font-weight: bold;'>⚠️ No stock available</span>"
-            elif total_available < 100:
-                info_text += f"<br><span style='color: #ffc107; font-weight: bold;'>⚠️ Low stock ({total_available} pieces)</span>"
-            else:
-                info_text += "<br><span style='color: #28a745; font-weight: bold;'>✅ Stock available</span>"
-            
+        product = next((p for p in self.db_manager.get_all(Product) if get_id(p) == product_id), None)
+        # Calculate total available stock from all purchases
+        total_stock = [get_attr(p, 'remaining_stock') for p in self.db_manager.get_all(Purchase) if get_attr(p, 'product_id') == product_id]
+        total_available = sum(total_stock)
+        info_text = f"<b>{get_name(product)}</b><br><br>"
+        info_text += f"<b>Total Available Stock:</b> {total_available} pieces<br>"
+        # If a specific purchase is selected, show its details
+        if purchase_id:
+            purchase = next((p for p in self.db_manager.get_all(Purchase) if get_id(p) == purchase_id), None)
+            if purchase:
+                info_text += f"<br><b>Selected Supplier Purchase:</b><br>"
+                info_text += f"  Invoice: {get_attr(purchase, 'invoice_number')}<br>"
+                info_text += f"  Supplier: {get_attr(purchase, 'supplier_name') or 'Unknown'}<br>"
+                info_text += f"  Remaining Stock: {get_attr(purchase, 'remaining_stock')}/{get_attr(purchase, 'quantity')}<br>"
+                # Add purchase date and unit price if available
+                purchase_date = get_attr(purchase, 'purchase_date')
+                if purchase_date:
+                    try:
+                        info_text += f"  Purchase Date: {purchase_date.strftime('%d/%m/%Y')}<br>"
+                    except Exception:
+                        info_text += f"  Purchase Date: {purchase_date}<br>"
+                unit_price = get_attr(purchase, 'unit_price')
+                if unit_price is not None:
+                    try:
+                        info_text += f"  Unit Price: {float(unit_price):.3f} BHD<br>"
+                    except Exception:
+                        info_text += f"  Unit Price: {unit_price} BHD<br>"
+        # Show stock status
+        if total_available == 0:
+            info_text += "<br><span style='color: #dc3545; font-weight: bold;'>⚠️ No stock available</span>"
+        elif total_available < 100:
+            info_text += f"<br><span style='color: #ffc107; font-weight: bold;'>⚠️ Low stock ({total_available} pieces)</span>"
+        else:
+            info_text += "<br><span style='color: #28a745; font-weight: bold;'>✅ Stock available</span>"
+        # Update both displays (for compatibility)
+        self.stock_info_display.setText(info_text)
+        if hasattr(self, 'stock_info_label'):
             self.stock_info_label.setText(info_text)
     
     def validate_input(self) -> tuple[bool, str]:
@@ -303,74 +298,61 @@ class TransactionDialog(QDialog):
         transaction_date = datetime(q_date.year(), q_date.month(), q_date.day())
         
         # Confirm transaction
-        with self.db_manager.get_session() as session:
-            product = session.query(Product).get(product_id)
-            purchase = session.query(Purchase).get(purchase_id)
-            location = session.query(DistributionLocation).get(location_id)
-            
-            reply = QMessageBox.question(
-                self,
-                "Confirm Transaction",
-                f"Create the following transaction?\n\n"
-                f"Reference: {reference}\n"
-                f"Product: {product.name}\n"
-                f"From Purchase: {purchase.invoice_number} ({purchase.supplier_name or 'N/A'})\n"
-                f"To Location: {location.name}\n"
-                f"Quantity: {quantity} pieces\n"
-                f"Date: {transaction_date.strftime('%d/%m/%Y')}\n\n"
-                f"Stock will be deducted from the supplier purchase.\n"
-                f"This action cannot be undone.",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No
-            )
-            
-            if reply == QMessageBox.StandardButton.No:
-                return
+        product = next((p for p in self.db_manager.get_all(Product) if get_id(p) == product_id), None)
+        purchase = next((p for p in self.db_manager.get_all(Purchase) if get_id(p) == purchase_id), None)
+        location = next((l for l in self.db_manager.get_all(DistributionLocation) if get_id(l) == location_id), None)
+        reply = QMessageBox.question(
+            self,
+            "Confirm Transaction",
+            f"Create the following transaction?\n\n"
+            f"Reference: {reference}\n"
+            f"Product: {get_name(product)}\n"
+            f"From Purchase: {get_attr(purchase, 'invoice_number')} ({get_attr(purchase, 'supplier_name') or 'N/A'})\n"
+            f"To Location: {get_name(location)}\n"
+            f"Quantity: {quantity} pieces\n"
+            f"Date: {transaction_date.strftime('%d/%m/%Y')}\n\n"
+            f"Stock will be deducted from the supplier purchase.\n"
+            f"This action cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.No:
+            return
         
         # Create transaction directly (no stock service needed now)
         from src.database.models import Transaction
         
         try:
-            with self.db_manager.get_session() as session:
-                # Get purchase and validate stock
-                purchase = session.query(Purchase).get(purchase_id)
-                if not purchase:
-                    QMessageBox.critical(
-                        self,
-                        "Error",
-                        f"Purchase with ID {purchase_id} not found."
-                    )
-                    return
-                
-                if purchase.remaining_stock < quantity:
-                    QMessageBox.critical(
-                        self,
-                        "Insufficient Stock",
-                        f"Purchase only has {purchase.remaining_stock} pieces remaining."
-                    )
-                    return
-                
-                # Create transaction
-                transaction = Transaction(
-                    transaction_reference=reference if reference else None,
-                    purchase_id=purchase_id,
-                    product_id=product_id,
-                    distribution_location_id=location_id,
-                    quantity=quantity,
-                    transaction_date=transaction_date
+            purchase = next((p for p in self.db_manager.get_all(Purchase) if get_id(p) == purchase_id), None)
+            if not purchase:
+                QMessageBox.critical(
+                    self,
+                    "Error",
+                    f"Purchase with ID {purchase_id} not found."
                 )
-                
-                # Reduce purchase stock
-                purchase.remaining_stock -= quantity
-                
-                # Add transaction to session
-                session.add(transaction)
-                
-                # Flush to get the transaction ID without committing
-                session.flush()
-                transaction_id = transaction.id
-                
-            # Context manager will commit here
+                return
+            if get_attr(purchase, 'remaining_stock') < quantity:
+                QMessageBox.critical(
+                    self,
+                    "Insufficient Stock",
+                    f"Purchase only has {get_attr(purchase, 'remaining_stock')} pieces remaining."
+                )
+                return
+            from src.database.models import Transaction
+            transaction = Transaction(
+                transaction_reference=reference if reference else None,
+                purchase_id=purchase_id,
+                product_id=product_id,
+                distribution_location_id=location_id,
+                quantity=quantity,
+                transaction_date=transaction_date
+            )
+            # Reduce purchase stock
+            purchase.remaining_stock -= quantity
+            # Save transaction and update stock (implementation may vary)
+            self.db_manager.add(transaction)
+            self.db_manager.add(purchase)
+            transaction_id = get_id(transaction)
             QMessageBox.information(
                 self,
                 "Transaction Created",
@@ -380,7 +362,6 @@ class TransactionDialog(QDialog):
                 f"Stock has been updated."
             )
             self.accept()
-            
         except Exception as e:
             QMessageBox.critical(
                 self,

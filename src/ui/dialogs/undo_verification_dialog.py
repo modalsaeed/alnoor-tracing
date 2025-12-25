@@ -14,9 +14,9 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QColor
 from sqlalchemy.orm import joinedload
-
 from src.database.db_manager import DatabaseManager
 from src.database.models import PatientCoupon
+from src.utils.model_helpers import get_attr, get_id, get_name, get_nested_attr
 
 
 class UndoVerificationDialog(QDialog):
@@ -191,35 +191,22 @@ class UndoVerificationDialog(QDialog):
             # Calculate date filter
             if not hasattr(self, 'current_days_filter'):
                 self.current_days_filter = 7
-            
             date_filter = None
             if self.current_days_filter:
                 date_filter = datetime.now() - timedelta(days=self.current_days_filter)
+            # Use db_manager.get_all and helpers for compatibility
+            all_coupons = self.db_manager.get_all(PatientCoupon)
+            coupons = [c for c in all_coupons if get_attr(c, 'verified') == True and get_attr(c, 'verification_reference') is not None and (not date_filter or (get_attr(c, 'date_verified') and get_attr(c, 'date_verified') >= date_filter))]
+            coupons = sorted(coupons, key=lambda c: get_attr(c, 'date_verified') or datetime.min, reverse=True)
             
-            with self.db_manager.get_session() as session:
-                # Query verified coupons
-                query = session.query(PatientCoupon).options(
-                    joinedload(PatientCoupon.product),
-                    joinedload(PatientCoupon.medical_centre)
-                ).filter(
-                    PatientCoupon.verified == True,
-                    PatientCoupon.verification_reference.isnot(None)
-                )
-                
-                # Apply date filter
-                if date_filter:
-                    query = query.filter(PatientCoupon.date_verified >= date_filter)
-                
-                coupons = query.order_by(PatientCoupon.date_verified.desc()).all()
-                
-                if not coupons:
-                    self.verifications_table.setRowCount(1)
-                    no_data = QTableWidgetItem("No recent verifications found.")
-                    no_data.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    self.verifications_table.setItem(0, 0, no_data)
-                    self.verifications_table.setSpan(0, 0, 1, 8)
-                    self.bundles_data = []
-                    return
+            if not coupons:
+                self.verifications_table.setRowCount(1)
+                no_data = QTableWidgetItem("No recent verifications found.")
+                no_data.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.verifications_table.setItem(0, 0, no_data)
+                self.verifications_table.setSpan(0, 0, 1, 8)
+                self.bundles_data = []
+                return
                 
                 # Group by verification reference and DN number
                 bundles_dict = {}

@@ -144,3 +144,14 @@
 #   - SOLUTION_CONCURRENT_USERS.md (fix data conflicts)
 #   - SOLUTION_LIMITED_ACCESS.md (setup without server access)
 #   - SIMPLE_INSTALLATION_GUIDE.md (step-by-step instructions)
+# ──────────────────────────────────────────────────────────────────────────
+# DEBUG SETTINGS
+# ──────────────────────────────────────────────────────────────────────────
+# Control debugging features
+#
+# show_connection_debug: Show connection mode popup on app startup
+#   true  = Show connection info dialog when app launches (default)
+#   false = Disable the popup to launch silently
+#
+# [debug]
+# show_connection_debug = true

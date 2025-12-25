@@ -37,11 +37,25 @@ from .models import (
 T = TypeVar('T')
 
 
+# Global variable to store connection info for display
+_connection_debug_info = []
+
+def get_connection_debug_info():
+    """Get the connection debug information collected during initialization"""
+    return _connection_debug_info
+
 def get_database_instance(db_path: Optional[str] = None):
     """
     Factory function to get the appropriate database instance.
     Returns DatabaseClient if configured for API mode, otherwise DatabaseManager.
     """
+    global _connection_debug_info
+    _connection_debug_info = []
+    
+    def add_debug(msg):
+        """Add debug message to global list"""
+        _connection_debug_info.append(msg)
+    
     # Check for API client mode in config
     if db_path is None:
         if getattr(sys, 'frozen', False):
@@ -49,21 +63,39 @@ def get_database_instance(db_path: Optional[str] = None):
         else:
             config_path = Path(__file__).parent.parent.parent / 'config.ini'
         
+        add_debug(f"🔍 Config path: {config_path}")
+        add_debug(f"🔍 Config exists: {config_path.exists()}")
+        
         if config_path.exists():
             config = configparser.ConfigParser()
             config.read(config_path, encoding='utf-8')
             
+            add_debug(f"🔍 Config sections: {config.sections()}")
+            
             # Check for API server mode
             if 'server' in config:
-                mode = config['server'].get('mode', 'local')
+                add_debug(f"🔍 [server] section found")
+                mode = config['server'].get('mode', 'NOT SET')
+                server_url = config['server'].get('server_url', 'NOT SET')
+                add_debug(f"🔍 mode = {mode}")
+                add_debug(f"🔍 server_url = {server_url}")
+                
                 if mode == 'client':
                     # Use API client instead of direct database
                     server_url = config['server'].get('server_url', 'http://localhost:5000')
-                    print(f"Using API client mode: {server_url}")
+                    add_debug(f"✅ Using API CLIENT mode")
+                    add_debug(f"🌐 Server: {server_url}")
                     from .db_client import DatabaseClient
                     return DatabaseClient(server_url)
+                else:
+                    add_debug(f"⚠️  mode is '{mode}', not 'client'")
+            else:
+                add_debug(f"⚠️  No [server] section in config")
+        else:
+            add_debug(f"⚠️  Config file not found")
     
     # Default: use local SQLite database
+    add_debug(f"✅ Using LOCAL DATABASE mode")
     return DatabaseManager(db_path)
 
 
@@ -748,4 +780,4 @@ class DatabaseManager:
 # Convenience function to get the global database manager instance
 def get_db_manager(db_path: Optional[str] = None) -> DatabaseManager:
     """Get or create the global DatabaseManager instance."""
-    return DatabaseManager(db_path)
+    return get_database_instance(db_path)

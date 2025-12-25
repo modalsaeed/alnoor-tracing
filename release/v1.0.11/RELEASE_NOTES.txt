@@ -1,0 +1,126 @@
+===========================================
+Alnoor Medical Services - Release Notes
+Version 1.0.11
+===========================================
+
+Build Date: 2025-12-25 09:33:29
+
+NEW IN THIS VERSION
+-------------------
+
+🎉 API Server Multi-User Support!
+   - NEW: Each user works on their own PC
+   - NEW: No Remote Desktop required
+   - NEW: Supports 4-10+ concurrent users
+   - NEW: True client-server architecture
+
+✨ Multiple Deployment Options
+   - Single PC (standalone)
+   - RDP Multi-User (2-4 users)
+   - API Server Multi-User (4-10+ users)
+   - All options in ONE package!
+
+📦 Improved Packaging
+   - Server/ folder with all API server files
+   - Documentation/ folder with all guides
+   - Clear folder structure
+   - Setup scripts included
+
+EXISTING FEATURES
+-----------------
+
+✨ Multi-User LAN Support (RDP)
+   - SQLite WAL mode for concurrent access
+   - Multiple users can work simultaneously
+   - Automatic conflict resolution
+
+✨ Backup & Restore System
+   - File → Backup Database
+   - Automatic timestamped backups
+   - One-click restore from backups
+
+✨ Undo Verification
+   - Tools → Undo Verification (Ctrl+Z)
+   - Revert recent verification mistakes
+   - Filter by timeframe
+
+✨ Update-Safe Architecture
+   - Database in AppData (never touched by updates)
+   - Application in Program Files (updated safely)
+   - Automatic migrations on first launch
+
+INSTALLATION OPTIONS
+--------------------
+
+1. SINGLE PC
+   ✅ Run installer
+   ✅ Launch app
+   ✅ Start working!
+
+2. RDP MULTI-USER (2-4 users)
+   ✅ Install on server PC
+   ✅ Run Setup-MultiUser.ps1
+   ✅ Users Remote Desktop to server
+
+3. API SERVER MULTI-USER (4-10+ users)
+   ✅ Give Server/ folder to IT person
+   ✅ IT person runs start_server.bat
+   ✅ Users install app + config.ini
+   ✅ Everyone works on own PC!
+
+See README.txt and DEPLOYMENT_OPTIONS.md for details.
+
+IMPORTANT NOTES
+---------------
+
+⚠️ Network Shares NOT Supported
+   Using database on network share with concurrent
+   users causes data corruption. Use RDP or API
+   Server deployment instead.
+
+✅ Backward Compatible
+   Existing single-PC installations continue to work.
+   No migration needed.
+
+✅ Fresh Database
+   Creates NEW empty database on first run.
+   Your data is safe and isolated.
+
+SYSTEM REQUIREMENTS
+-------------------
+
+Client PC:
+- Windows 10 or later (64-bit)
+- 4 GB RAM minimum
+- 200 MB free disk space
+
+Server PC (API mode only):
+- Windows 10/11 or Windows Server
+- Python 3.8 or higher
+- Network connectivity
+
+DOCUMENTATION
+-------------
+
+📁 Server/
+   - API_SERVER_SETUP_GUIDE.md (for IT person)
+   - start_server.bat (one-click startup)
+   - test_api_server.py (verify installation)
+
+📁 Documentation/
+   - DEPLOYMENT_OPTIONS.md (compare methods)
+   - API_SERVER_QUICKSTART.md (quick guide)
+   - SIMPLE_INSTALLATION_GUIDE.md (non-technical)
+   - SOLUTION_CONCURRENT_USERS.md (technical)
+   - config.ini.example (all configurations)
+
+📄 Root:
+   - README.txt (start here!)
+   - Setup-MultiUser.ps1 (RDP setup wizard)
+
+For questions or support:
+GitHub: https://github.com/modalsaeed/alnoor-tracing
+
+===========================================
+© 2025 Alnoor Medical Services
+===========================================

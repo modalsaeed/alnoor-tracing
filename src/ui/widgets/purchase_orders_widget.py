@@ -24,6 +24,7 @@ from PyQt6.QtGui import QColor
 from src.database.db_manager import DatabaseManager
 from src.database.models import PurchaseOrder, Product
 from src.utils import Colors, Fonts, Spacing, StyleSheets, IconStyles
+from src.utils.model_helpers import get_attr, get_id, get_name, get_nested_attr
 
 
 class PurchaseOrdersWidget(QWidget):
@@ -185,16 +186,16 @@ class PurchaseOrdersWidget(QWidget):
         
         for row, order in enumerate(orders):
             # ID
-            id_item = QTableWidgetItem(str(order.id))
+            id_item = QTableWidgetItem(str(get_id(order)))
             id_item.setData(Qt.ItemDataRole.UserRole, order)
             self.table.setItem(row, 0, id_item)
             
             # PO Reference
-            po_ref_item = QTableWidgetItem(order.po_reference)
+            po_ref_item = QTableWidgetItem(get_attr(order, 'po_reference', ''))
             self.table.setItem(row, 1, po_ref_item)
             
             # Product name
-            product_name = order.product.name if order.product else "Unknown"
+            product_name = get_nested_attr(order, 'product.name', 'Unknown')
             product_item = QTableWidgetItem(product_name)
             self.table.setItem(row, 2, product_item)
             
@@ -293,9 +294,9 @@ class PurchaseOrdersWidget(QWidget):
         else:
             filtered = [
                 order for order in self.current_orders
-                if search_text in order.po_reference.lower() or
-                   (order.product and search_text in order.product.name.lower()) or
-                   (order.warehouse_location and search_text in order.warehouse_location.lower())
+                if search_text in get_attr(order, 'po_reference', '').lower() or
+                   search_text in get_nested_attr(order, 'product.name', '').lower() or
+                   search_text in get_attr(order, 'warehouse_location', '').lower()
             ]
             self.populate_table(filtered)
     
@@ -372,8 +373,8 @@ class PurchaseOrdersWidget(QWidget):
             self,
             "Confirm Deletion",
             f"Are you sure you want to delete:\n\n"
-            f"PO Reference: {order.po_reference}\n"
-            f"Product: {order.product.name if order.product else 'Unknown'}\n"
+            f"PO Reference: {get_attr(order, 'po_reference', '')}\n"
+            f"Product: {get_nested_attr(order, 'product.name', 'Unknown')}\n"
             f"Quantity: {order.quantity}\n\n"
             f"This action cannot be undone.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -382,11 +383,11 @@ class PurchaseOrdersWidget(QWidget):
         
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                self.db_manager.delete(PurchaseOrder, order.id)
+                self.db_manager.delete(PurchaseOrder, get_id(order))
                 QMessageBox.information(
                     self,
                     "Success",
-                    f"Purchase order '{order.po_reference}' deleted successfully."
+                    f"Purchase order '{get_attr(order, 'po_reference', '')}' deleted successfully."
                 )
                 self.load_orders()
             except Exception as e:

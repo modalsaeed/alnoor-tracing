@@ -25,6 +25,7 @@ from src.database.db_manager import DatabaseManager
 from src.database.models import Product, PurchaseOrder, PatientCoupon, MedicalCentre, DistributionLocation
 from src.services.stock_service import StockService
 from src.utils import Colors, Fonts, Spacing, Sizes, StyleSheets, IconStyles, get_card_color
+from src.utils.model_helpers import get_attr, get_id, get_name, get_nested_attr
 
 
 class DashboardWidget(QWidget):
@@ -395,17 +396,17 @@ class DashboardWidget(QWidget):
                 self.recent_table.setItem(row, 0, QTableWidgetItem(date_str))
                 
                 # Patient
-                self.recent_table.setItem(row, 1, QTableWidgetItem(coupon.patient_name))
+                self.recent_table.setItem(row, 1, QTableWidgetItem(get_attr(coupon, 'patient_name', '')))
                 
                 # CPR
-                self.recent_table.setItem(row, 2, QTableWidgetItem(coupon.cpr))
+                self.recent_table.setItem(row, 2, QTableWidgetItem(get_attr(coupon, 'cpr', '')))
                 
                 # Product
-                product_name = coupon.product.name if coupon.product else "Unknown"
+                product_name = get_nested_attr(coupon, 'product.name', 'Unknown')
                 self.recent_table.setItem(row, 3, QTableWidgetItem(product_name))
                 
                 # Quantity
-                quantity_item = QTableWidgetItem(f"{coupon.quantity_pieces} pcs")
+                quantity_item = QTableWidgetItem(f"{get_attr(coupon, 'quantity_pieces', 0)} pcs")
                 quantity_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.recent_table.setItem(row, 4, quantity_item)
                 

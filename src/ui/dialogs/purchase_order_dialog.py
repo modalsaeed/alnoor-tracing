@@ -23,9 +23,11 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from decimal import Decimal
 
+
 from src.database.db_manager import DatabaseManager
 from src.database.models import PurchaseOrder, Product
 from src.utils import validate_po_reference, validate_quantity, sanitize_input, normalize_reference
+from src.utils.model_helpers import get_attr, get_id, get_name, get_nested_attr
 
 
 class PurchaseOrderDialog(QDialog):
@@ -372,11 +374,9 @@ class PurchaseOrderDialog(QDialog):
     def is_po_reference_duplicate(self, po_reference: str) -> bool:
         """Check if PO reference already exists in database."""
         try:
-            with self.db_manager.get_session() as session:
-                existing = session.query(PurchaseOrder).filter(
-                    PurchaseOrder.po_reference == po_reference.upper()
-                ).first()
-                return existing is not None
+            all_orders = self.db_manager.get_all(PurchaseOrder)
+            existing = next((order for order in all_orders if get_attr(order, 'po_reference') == po_reference.upper()), None)
+            return existing is not None
         except Exception:
             return False
     

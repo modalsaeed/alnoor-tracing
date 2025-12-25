@@ -78,6 +78,13 @@ class MainWindow(QMainWindow):
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
         
+        # Help menu
+        help_menu = menubar.addMenu('&Help')
+        
+        debug_log_action = QAction('📝 Show Debug Log Location', self)
+        debug_log_action.triggered.connect(self.show_debug_log_location)
+        help_menu.addAction(debug_log_action)
+        
         # Tools menu
         tools_menu = menubar.addMenu('&Tools')
         
@@ -301,6 +308,58 @@ class MainWindow(QMainWindow):
             current_widget.load_medical_centres()
         elif hasattr(current_widget, 'load_distribution_locations'):
             current_widget.load_distribution_locations()
+    
+    def show_debug_log_location(self):
+        """Show the location of the debug log file."""
+        from PyQt6.QtWidgets import QMessageBox
+        import os
+        import sys
+        from pathlib import Path
+        import tempfile
+        
+        # Use EXACT same logic as db_manager.py
+        try:
+            if getattr(sys, 'frozen', False):
+                # Installed app - use LocalAppData
+                app_data = Path(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')))
+                log_dir = app_data / 'Alnoor Medical Services' / 'database'
+            else:
+                # Development mode
+                log_dir = Path(__file__).parent.parent.parent / 'logs'
+            
+            log_path = log_dir / 'connection_debug.log'
+            
+            # If file doesn't exist there, check temp directory fallback
+            if not log_path.exists():
+                log_path = Path(tempfile.gettempdir()) / 'alnoor_connection_debug.log'
+        except:
+            log_path = Path(tempfile.gettempdir()) / 'alnoor_connection_debug.log'
+        
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Information)
+        msg.setWindowTitle("Debug Log Location")
+        msg.setText("Connection debug log file location:")
+        msg.setInformativeText(str(log_path.absolute()) + 
+                              ("\n\n✅ File exists" if log_path.exists() else "\n\n⚠️ File not created yet"))
+        msg.setDetailedText(
+            "This log file contains information about:\n"
+            "- Config file location\n"
+            "- Connection mode (Local or API Client)\n"
+            "- Server URL (if in client mode)\n"
+            "\nYou can open this folder in File Explorer by copying the path."
+        )
+        
+        # Add button to open folder
+        open_folder_btn = msg.addButton("Open Folder", QMessageBox.ButtonRole.ActionRole)
+        msg.addButton(QMessageBox.StandardButton.Ok)
+        
+        msg.exec()
+        
+        if msg.clickedButton() == open_folder_btn:
+            import subprocess
+            folder = log_path.parent
+            if folder.exists():
+                subprocess.run(['explorer', str(folder)])
     
     def closeEvent(self, event):
         """Handle window close event."""

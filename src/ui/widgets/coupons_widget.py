@@ -30,6 +30,7 @@ from src.ui.dialogs.coupon_dialog import CouponDialog
 from src.ui.dialogs.verify_coupon_dialog import VerifyCouponDialog
 from src.ui.dialogs.grv_reference_dialog import GRVReferenceDialog
 from src.utils import Colors, Fonts, Spacing, StyleSheets, IconStyles
+from src.utils.model_helpers import get_attr, get_id, get_name, get_nested_attr
 
 
 class CouponsWidget(QWidget):
@@ -253,21 +254,21 @@ class CouponsWidget(QWidget):
             self.product_filter.clear()
             self.product_filter.addItem("All Products", None)
             for product in products:
-                self.product_filter.addItem(product.name, product.id)
+                self.product_filter.addItem(get_name(product), get_id(product))
             
             # Load medical centres
             centres = self.db_manager.get_all(MedicalCentre)
             self.centre_filter.clear()
             self.centre_filter.addItem("All Centres", None)
             for centre in centres:
-                self.centre_filter.addItem(centre.name, centre.id)
+                self.centre_filter.addItem(get_name(centre), get_id(centre))
             
             # Load distribution locations
             locations = self.db_manager.get_all(DistributionLocation)
             self.location_filter.clear()
             self.location_filter.addItem("All Locations", None)
             for location in locations:
-                self.location_filter.addItem(location.name, location.id)
+                self.location_filter.addItem(get_name(location), get_id(location))
                 
         except Exception as e:
             QMessageBox.warning(
@@ -370,29 +371,29 @@ class CouponsWidget(QWidget):
             self.table.insertRow(row)
             
             # ID
-            self.table.setItem(row, 0, QTableWidgetItem(str(coupon.id)))
+            self.table.setItem(row, 0, QTableWidgetItem(str(get_id(coupon))))
             
             # Patient Name (handle None)
-            self.table.setItem(row, 1, QTableWidgetItem(coupon.patient_name or "N/A"))
+            self.table.setItem(row, 1, QTableWidgetItem(get_attr(coupon, 'patient_name', 'N/A')))
             
             # CPR (handle None)
-            self.table.setItem(row, 2, QTableWidgetItem(coupon.cpr or "N/A"))
+            self.table.setItem(row, 2, QTableWidgetItem(get_attr(coupon, 'cpr', 'N/A')))
             
             # Product
-            product_name = coupon.product.name if coupon.product else "Unknown"
+            product_name = get_nested_attr(coupon, 'product.name', 'Unknown')
             self.table.setItem(row, 3, QTableWidgetItem(product_name))
             
             # Quantity
-            quantity_item = QTableWidgetItem(f"{coupon.quantity_pieces} pcs")
+            quantity_item = QTableWidgetItem(f"{get_attr(coupon, 'quantity_pieces', 0)} pcs")
             quantity_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(row, 4, quantity_item)
             
             # Medical Centre
-            centre_name = coupon.medical_centre.name if coupon.medical_centre else "Unknown"
+            centre_name = get_nested_attr(coupon, 'medical_centre.name', 'Unknown')
             self.table.setItem(row, 5, QTableWidgetItem(centre_name))
             
             # Distribution Location
-            location_name = coupon.distribution_location.name if coupon.distribution_location else "Unknown"
+            location_name = get_nested_attr(coupon, 'distribution_location.name', 'Unknown')
             self.table.setItem(row, 6, QTableWidgetItem(location_name))
             
             # Date - use date_received (date only, no timestamp)
@@ -566,11 +567,11 @@ class CouponsWidget(QWidget):
                 self,
                 "Delete Verified Coupon?",
                 f"⚠️ This coupon has been verified and stock has been deducted.\n\n"
-                f"Patient: {coupon.patient_name}\n"
-                f"CPR: {coupon.cpr}\n"
-                f"Product: {coupon.product.name if coupon.product else 'Unknown'}\n"
-                f"Quantity: {coupon.quantity_pieces} pieces\n"
-                f"Verification Ref: {coupon.verification_reference}\n\n"
+                f"Patient: {get_attr(coupon, 'patient_name', '')}\n"
+                f"CPR: {get_attr(coupon, 'cpr', '')}\n"
+                f"Product: {get_nested_attr(coupon, 'product.name', 'Unknown')}\n"
+                f"Quantity: {get_attr(coupon, 'quantity_pieces', 0)} pieces\n"
+                f"Verification Ref: {get_attr(coupon, 'verification_reference', '')}\n\n"
                 f"Deleting will RESTORE the stock back to the purchase orders.\n\n"
                 f"Are you sure you want to delete this verified coupon?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -584,7 +585,7 @@ class CouponsWidget(QWidget):
             try:
                 from services.stock_service import StockService
                 stock_service = StockService(self.db_manager)
-                stock_service.restore_stock(coupon.id)
+                stock_service.restore_stock(get_id(coupon))
             except Exception as e:
                 QMessageBox.critical(
                     self,
@@ -598,8 +599,8 @@ class CouponsWidget(QWidget):
                 self,
                 "Confirm Deletion",
                 f"Are you sure you want to delete this coupon?\n\n"
-                f"Patient: {coupon.patient_name}\n"
-                f"CPR: {coupon.cpr}",
+                f"Patient: {get_attr(coupon, 'patient_name', '')}\n"
+                f"CPR: {get_attr(coupon, 'cpr', '')}",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No
             )

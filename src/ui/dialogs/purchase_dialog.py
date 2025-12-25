@@ -25,9 +25,11 @@ from PyQt6.QtCore import Qt, QDate
 from decimal import Decimal
 from datetime import datetime
 
+
 from src.database.db_manager import DatabaseManager
 from src.database.models import Purchase, PurchaseOrder, Product
 from src.utils import sanitize_input
+from src.utils.model_helpers import get_attr, get_id, get_name, get_nested_attr
 
 
 class PurchaseDialog(QDialog):
@@ -189,28 +191,20 @@ class PurchaseDialog(QDialog):
     def load_purchase_orders(self):
         """Load available purchase orders with remaining stock."""
         try:
-            with self.db_manager.get_session() as session:
-                # Get POs with remaining stock > 0
-                self.purchase_orders = session.query(PurchaseOrder).filter(
-                    PurchaseOrder.remaining_stock > 0
-                ).order_by(PurchaseOrder.po_reference).all()
-                
+            all_pos = sorted(self.db_manager.get_all(PurchaseOrder), key=lambda po: get_attr(po, 'po_reference'))
+            if self.is_edit_mode:
+                self.purchase_orders = all_pos
+                self.po_combo.clear()
+                for po in all_pos:
+                    display_text = f"{get_attr(po, 'po_reference')} - {get_nested_attr(po, 'product.name')}"
+                    self.po_combo.addItem(display_text, get_id(po))
+            else:
+                self.purchase_orders = [po for po in all_pos if get_attr(po, 'remaining_stock') > 0]
                 self.po_combo.clear()
                 self.po_combo.addItem("-- Select Local Purchase Order --", None)
-                
                 for po in self.purchase_orders:
-                    display_text = f"{po.po_reference} - {po.product.name} ({po.remaining_stock} units available)"
-                    self.po_combo.addItem(display_text, po.id)
-                
-                # If edit mode, load all POs (including the one being edited)
-                if self.is_edit_mode:
-                    all_pos = session.query(PurchaseOrder).order_by(PurchaseOrder.po_reference).all()
-                    self.purchase_orders = all_pos
-                    
-                    self.po_combo.clear()
-                    for po in all_pos:
-                        display_text = f"{po.po_reference} - {po.product.name}"
-                        self.po_combo.addItem(display_text, po.id)
+                    display_text = f"{get_attr(po, 'po_reference')} - {get_nested_attr(po, 'product.name')} ({get_attr(po, 'remaining_stock')} units available)"
+                    self.po_combo.addItem(display_text, get_id(po))
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load purchase orders: {e}")
     
@@ -223,20 +217,17 @@ class PurchaseDialog(QDialog):
             return
         
         try:
-            with self.db_manager.get_session() as session:
-                po = session.query(PurchaseOrder).filter(PurchaseOrder.id == po_id).first()
-                if po:
-                    self.product_display.setText(po.product.name)
-                    self.po_available_display.setText(f"{po.remaining_stock} units")
-                    
-                    # Set max quantity
-                    if not self.is_edit_mode:
-                        self.quantity_input.setMaximum(po.remaining_stock)
-                    else:
-                        # In edit mode, allow current quantity plus remaining stock
-                        max_qty = po.remaining_stock + self.purchase.quantity
-                        self.quantity_input.setMaximum(max_qty)
-        except Exception as e:
+            po = next((po for po in self.purchase_orders if get_id(po) == po_id), None)
+            if po:
+                self.product_display.setText(get_nested_attr(po, 'product.name'))
+                self.po_available_display.setText(f"{get_attr(po, 'remaining_stock')} units")
+                # Set max quantity
+                if not self.is_edit_mode:
+                    self.quantity_input.setMaximum(get_attr(po, 'remaining_stock'))
+                else:
+                    max_qty = get_attr(po, 'remaining_stock') + self.purchase.quantity
+                    self.quantity_input.setMaximum(max_qty)
+        except Exception:
             pass  # Silently fail for UI updates
     
     def validate_quantity(self):
@@ -248,18 +239,16 @@ class PurchaseDialog(QDialog):
         quantity = self.quantity_input.value()
         
         try:
-            with self.db_manager.get_session() as session:
-                po = session.query(PurchaseOrder).filter(PurchaseOrder.id == po_id).first()
-                if po:
-                    max_allowed = po.remaining_stock
-                    if self.is_edit_mode:
-                        max_allowed += self.purchase.quantity
-                    
-                    if quantity > max_allowed:
-                        self.quantity_input.setStyleSheet("background-color: #ffcccc;")
-                    else:
-                        self.quantity_input.setStyleSheet("")
-        except Exception as e:
+            po = next((po for po in self.purchase_orders if get_id(po) == po_id), None)
+            if po:
+                max_allowed = get_attr(po, 'remaining_stock')
+                if self.is_edit_mode:
+                    max_allowed += self.purchase.quantity
+                if quantity > max_allowed:
+                    self.quantity_input.setStyleSheet("background-color: #ffcccc;")
+                else:
+                    self.quantity_input.setStyleSheet("")
+        except Exception:
             pass  # Silently fail for validation
     
     def calculate_totals(self):
@@ -326,38 +315,42 @@ class PurchaseDialog(QDialog):
             return
         
         try:
-            with self.db_manager.get_session() as session:
-                # Get PO
-                po = session.query(PurchaseOrder).filter(PurchaseOrder.id == po_id).first()
-                if not po:
-                    QMessageBox.critical(self, "Error", "Selected purchase order not found.")
+            po = next((po for po in self.purchase_orders if get_id(po) == po_id), None)
+            if not po:
+                QMessageBox.critical(self, "Error", "Selected purchase order not found.")
+                return
+            # Validate quantity against PO remaining stock
+            if not self.is_edit_mode:
+                if quantity > get_attr(po, 'remaining_stock'):
+                    QMessageBox.warning(
+                        self,
+                        "Insufficient Stock",
+                        f"Purchase quantity ({quantity}) exceeds PO remaining stock ({get_attr(po, 'remaining_stock')})."
+                    )
                     return
-                
-                # Validate quantity against PO remaining stock
-                if not self.is_edit_mode:
-                    if quantity > po.remaining_stock:
-                        QMessageBox.warning(
-                            self,
-                            "Insufficient Stock",
-                            f"Purchase quantity ({quantity}) exceeds PO remaining stock ({po.remaining_stock})."
-                        )
-                        return
-                else:
-                    # In edit mode, check if new quantity is valid
-                    available = po.remaining_stock + self.purchase.quantity
-                    if quantity > available:
-                        QMessageBox.warning(
-                            self,
-                            "Insufficient Stock",
-                            f"Purchase quantity ({quantity}) exceeds available stock ({available})."
-                        )
-                        return
-                
-                # Check for duplicate invoice number
-                if not self.is_edit_mode:
-                    existing = session.query(Purchase).filter(
-                        Purchase.invoice_number == invoice_number
-                    ).first()
+            else:
+                available = get_attr(po, 'remaining_stock') + self.purchase.quantity
+                if quantity > available:
+                    QMessageBox.warning(
+                        self,
+                        "Insufficient Stock",
+                        f"Purchase quantity ({quantity}) exceeds available stock ({available})."
+                    )
+                    return
+            # Check for duplicate invoice number
+            all_purchases = self.db_manager.get_all(Purchase)
+            if not self.is_edit_mode:
+                existing = next((p for p in all_purchases if get_attr(p, 'invoice_number') == invoice_number), None)
+                if existing:
+                    QMessageBox.warning(
+                        self,
+                        "Duplicate Invoice",
+                        f"Invoice number '{invoice_number}' already exists."
+                    )
+                    return
+            else:
+                if invoice_number != self.purchase.invoice_number:
+                    existing = next((p for p in all_purchases if get_attr(p, 'invoice_number') == invoice_number), None)
                     if existing:
                         QMessageBox.warning(
                             self,
@@ -365,39 +358,22 @@ class PurchaseDialog(QDialog):
                             f"Invoice number '{invoice_number}' already exists."
                         )
                         return
-                else:
-                    # In edit mode, check if invoice changed and is duplicate
-                    if invoice_number != self.purchase.invoice_number:
-                        existing = session.query(Purchase).filter(
-                            Purchase.invoice_number == invoice_number
-                        ).first()
-                        if existing:
-                            QMessageBox.warning(
-                                self,
-                                "Duplicate Invoice",
-                                f"Invoice number '{invoice_number}' already exists."
-                            )
-                            return
-                
-                # Get date
-                qdate = self.date_input.date()
-                purchase_date = datetime(qdate.year(), qdate.month(), qdate.day())
-                
-                # Calculate total
-                total_price = Decimal(str(quantity * unit_price))
-                
-                if self.is_edit_mode:
-                    # Update existing purchase
-                    old_quantity = self.purchase.quantity
-                    quantity_diff = quantity - old_quantity
-                    
-                    self.purchase.invoice_number = invoice_number
-                    self.purchase.supplier_name = sanitize_input(self.supplier_input.text())
-                    self.purchase.purchase_date = purchase_date
-                    self.purchase.quantity = quantity
-                    self.purchase.remaining_stock = self.purchase.remaining_stock + quantity_diff
-                    self.purchase.unit_price = Decimal(str(unit_price))
-                    self.purchase.total_price = total_price
+            # Get date
+            qdate = self.date_input.date()
+            purchase_date = datetime(qdate.year(), qdate.month(), qdate.day())
+            # Calculate total
+            total_price = Decimal(str(quantity * unit_price))
+            if self.is_edit_mode:
+                # Update existing purchase
+                old_quantity = self.purchase.quantity
+                quantity_diff = quantity - old_quantity
+                self.purchase.invoice_number = invoice_number
+                self.purchase.supplier_name = sanitize_input(self.supplier_input.text())
+                self.purchase.purchase_date = purchase_date
+                self.purchase.quantity = quantity
+                self.purchase.remaining_stock = self.purchase.remaining_stock + quantity_diff
+                self.purchase.unit_price = Decimal(str(unit_price))
+                self.purchase.total_price = total_price
                     self.purchase.notes = sanitize_input(self.notes_input.toPlainText())
                     self.purchase.updated_at = datetime.now()
                     

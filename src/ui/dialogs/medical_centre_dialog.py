@@ -18,9 +18,11 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
+
 from src.database.db_manager import DatabaseManager
 from src.database.models import MedicalCentre
 from src.utils import validate_name, validate_reference, validate_phone, sanitize_input, normalize_reference
+from src.utils.model_helpers import get_attr, get_id, get_name, get_nested_attr
 
 
 class MedicalCentreDialog(QDialog):
@@ -172,11 +174,9 @@ class MedicalCentreDialog(QDialog):
     def is_reference_duplicate(self, reference: str) -> bool:
         """Check if reference already exists in database."""
         try:
-            with self.db_manager.get_session() as session:
-                existing = session.query(MedicalCentre).filter(
-                    MedicalCentre.reference == reference.upper()
-                ).first()
-                return existing is not None
+            all_centres = self.db_manager.get_all(MedicalCentre)
+            existing = next((c for c in all_centres if get_attr(c, 'reference') == reference.upper()), None)
+            return existing is not None
         except Exception:
             return False
     

@@ -28,6 +28,7 @@ from PyQt6.QtGui import QIcon
 
 from src.database.db_manager import DatabaseManager
 from src.database.models import Product
+from src.utils.model_helpers import get_attr, get_id, get_name
 from src.ui.dialogs.product_dialog import ProductDialog
 from src.utils import Colors, Fonts, Spacing, StyleSheets, IconStyles
 
@@ -185,25 +186,25 @@ class ProductsWidget(QWidget):
         
         for row, product in enumerate(products):
             # ID
-            id_item = QTableWidgetItem(str(product.id))
+            id_item = QTableWidgetItem(str(get_id(product, 0)))
             id_item.setData(Qt.ItemDataRole.UserRole, product)  # Store product object
             self.table.setItem(row, 0, id_item)
             
             # Name
-            name_item = QTableWidgetItem(product.name)
+            name_item = QTableWidgetItem(get_name(product, "N/A"))
             self.table.setItem(row, 1, name_item)
             
             # Reference
-            ref_item = QTableWidgetItem(product.reference)
+            ref_item = QTableWidgetItem(get_attr(product, 'reference', ""))
             self.table.setItem(row, 2, ref_item)
             
             # Unit
-            unit = product.unit or ""
+            unit = get_attr(product, 'unit', "")
             unit_item = QTableWidgetItem(unit)
             self.table.setItem(row, 3, unit_item)
             
             # Description
-            desc = product.description or ""
+            desc = get_attr(product, 'description', "")
             desc_item = QTableWidgetItem(desc)
             self.table.setItem(row, 4, desc_item)
         
@@ -220,10 +221,10 @@ class ProductsWidget(QWidget):
             # Filter products
             filtered = [
                 p for p in self.current_products
-                if search_text in p.name.lower() or
-                   search_text in p.reference.lower() or
-                   (p.unit and search_text in p.unit.lower()) or
-                   (p.description and search_text in p.description.lower())
+                if search_text in get_name(p, "").lower() or
+                   search_text in get_attr(p, 'reference', "").lower() or
+                   search_text in get_attr(p, 'unit', "").lower() or
+                   search_text in get_attr(p, 'description', "").lower()
             ]
             self.populate_table(filtered)
     
@@ -286,8 +287,8 @@ class ProductsWidget(QWidget):
             self,
             "Confirm Deletion",
             f"Are you sure you want to delete:\n\n"
-            f"Name: {product.name}\n"
-            f"Reference: {product.reference}\n\n"
+            f"Name: {get_name(product)}\n"
+            f"Reference: {get_attr(product, 'reference', 'N/A')}\n"
             f"This action cannot be undone.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
@@ -295,11 +296,11 @@ class ProductsWidget(QWidget):
         
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                self.db_manager.delete(Product, product.id)
+                self.db_manager.delete(Product, get_id(product))
                 QMessageBox.information(
                     self,
                     "Success",
-                    f"Product '{product.name}' deleted successfully."
+                    f"Product '{get_name(product)}' deleted successfully."
                 )
                 self.load_products()  # Reload table
             except Exception as e:

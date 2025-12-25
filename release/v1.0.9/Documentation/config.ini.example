@@ -1,0 +1,146 @@
+# Alnoor Medical Services - Configuration File
+# 
+# This file controls where the application stores its database or how it connects to a server.
+# 
+# ============================================================================
+# DEPLOYMENT OPTIONS
+# ============================================================================
+# 
+# OPTION 1: SINGLE PC (Default - NO config.ini needed)
+# ──────────────────────────────────────────────────────
+# ✅ Best for: One user per PC, no sharing needed
+# ✅ Setup: Delete this file (config.ini), or don't create it
+# ✅ Database location: %LOCALAPPDATA%\Alnoor Medical Services\database\
+# ✅ Advantages: Simple, no configuration, works immediately
+# 
+# 
+# OPTION 2: MULTI-USER via REMOTE DESKTOP (Good for 2-4 users)
+# ──────────────────────────────────────────────────────────────────
+# ✅ Best for: Small office, 1-4 concurrent users, shared data
+# ✅ Setup: Use Setup-MultiUser.ps1 script (run as Administrator)
+# ✅ Database location: C:\ProgramData\AlnoorDB\alnoor.db (on server PC)
+# ✅ How it works: Users connect to server PC via Remote Desktop
+# ✅ Advantages: No network share issues, instant updates, no data loss
+# ✅ Limitation: Requires RDP access, users work on server PC desktop
+# ✅ Configuration example below (Option 2)
+# 
+# 
+# OPTION 3: MULTI-USER via API SERVER (RECOMMENDED for 4+ users) ⭐
+# ──────────────────────────────────────────────────────────────────
+# ✅ Best for: Office with 2-10+ users, everyone on their own PC
+# ✅ Setup: Install Python on server PC, run API server script
+# ✅ How it works: Server PC runs API server, clients connect via HTTP
+# ✅ Advantages: 
+#    - Each user works on their OWN PC (no RDP needed!)
+#    - No network share issues
+#    - True concurrent multi-user support
+#    - No IT approval needed (just HTTP on port 5000)
+# ✅ Configuration example below (Option 3)
+# 
+# 
+# OPTION 4: NETWORK SHARE (⚠️ NOT RECOMMENDED - concurrent user issues)
+# ──────────────────────────────────────────────────────────────────────
+# ⚠️  WARNING: SQLite on network shares causes data corruption with
+#     concurrent users! Use Option 3 (API Server) instead.
+# ⚠️  Only suitable for: Single user accessing from multiple PCs
+# ⚠️  Configuration example below (Option 4)
+# 
+# ============================================================================
+# CONFIGURATION EXAMPLES
+# ============================================================================
+
+# ──────────────────────────────────────────────────────────────────────────
+# OPTION 2: Multi-User RDP Setup (Good for 2-4 users)
+# ──────────────────────────────────────────────────────────────────────────
+# Use this on the PC that acts as the server (where database lives locally)
+# Other users will Remote Desktop to this PC to use the app
+#
+# Uncomment these lines:
+# [database]
+# path = C:\ProgramData\AlnoorDB\alnoor.db
+#
+# Setup Steps:
+#   1. Run Setup-MultiUser.ps1 (as Administrator) and choose Option 2 or 3
+#   2. OR manually: Create C:\ProgramData\AlnoorDB\ folder
+#   3. Enable Remote Desktop on this PC
+#   4. Users connect via Remote Desktop
+#   5. Everyone works on same database (no conflicts!)
+
+# ──────────────────────────────────────────────────────────────────────────
+# OPTION 3: Multi-User API Server (RECOMMENDED for 4+ users) ⭐⭐⭐⭐⭐
+# ──────────────────────────────────────────────────────────────────────────
+# Best solution: Each user works on their OWN PC, no RDP needed!
+#
+# SERVER PC Configuration (the PC that has the database):
+# Uncomment these lines:
+# [server]
+# mode = server
+# port = 5000
+#
+# CLIENT PC Configuration (all other users):
+# Uncomment these lines and replace SERVER-IP with actual IP:
+# [server]
+# mode = client
+# server_url = http://192.168.1.10:5000
+#
+# Setup Steps:
+#   1. Server PC: Install Python, run start_server.bat
+#   2. Client PCs: Install app, create config.ini with server_url
+#   3. Everyone works on their own PC, no RDP, no data conflicts!
+#
+# See API_SERVER_SETUP_GUIDE.md for detailed instructions
+
+# ──────────────────────────────────────────────────────────────────────────
+# OPTION 4: Network Share (⚠️ Not recommended for concurrent users)
+# ──────────────────────────────────────────────────────────────────────────
+# Only use if you understand the limitations (data loss with concurrent writes)
+#
+# Uncomment these lines:
+# [database]
+# path = \\SERVER\Shared\AlnoorDB\alnoor.db
+#
+# Replace SERVER with your actual server name or IP address
+
+# ──────────────────────────────────────────────────────────────────────────
+# Additional Examples
+# ──────────────────────────────────────────────────────────────────────────
+
+# Mapped network drive (also not recommended for concurrent users):
+# [database]
+# path = Z:\AlnoorDB\alnoor.db
+
+# Local custom path (good for single user):
+# [database]
+# path = D:\AlnoorData\alnoor.db
+
+# Using IP address instead of server name (RDP setup):
+# [database]
+# path = C:\ProgramData\AlnoorDB\alnoor.db
+
+# ============================================================================
+# TROUBLESHOOTING
+# ============================================================================
+#
+# Q: Multiple users getting "database locked" errors?
+# A: You're probably using Option 3 (network share). Switch to Option 2 (RDP).
+#    See: SOLUTION_CONCURRENT_USERS.md
+#
+# Q: Users overwriting each other's data?
+# A: SQLite on network share doesn't work for concurrent users.
+#    Use Option 2 (Remote Desktop) instead.
+#    See: SOLUTION_CONCURRENT_USERS.md
+#
+# Q: How do I switch from network share to RDP setup?
+# A: 1. Backup database: Copy \\SERVER\Share\alnoor.db to safe location
+#    2. Run Setup-MultiUser.ps1 on the PC you want as server
+#    3. Copy backed up database to C:\ProgramData\AlnoorDB\
+#    4. Users connect via Remote Desktop instead
+#
+# Q: Can I have both local and shared databases?
+# A: No, only one database per installation.
+#    But users can have different config files pointing to different databases.
+#
+# For more help, see:
+#   - SOLUTION_CONCURRENT_USERS.md (fix data conflicts)
+#   - SOLUTION_LIMITED_ACCESS.md (setup without server access)
+#   - SIMPLE_INSTALLATION_GUIDE.md (step-by-step instructions)

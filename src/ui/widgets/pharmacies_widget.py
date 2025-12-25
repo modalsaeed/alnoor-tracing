@@ -14,6 +14,7 @@ from src.database import Pharmacy
 from src.database.db_manager import DatabaseManager
 from src.ui.dialogs.pharmacy_dialog import PharmacyDialog
 from src.utils import StyleSheets
+from src.utils.model_helpers import get_attr, get_id, get_name, get_nested_attr
 
 
 class PharmaciesWidget(QWidget):
@@ -116,12 +117,9 @@ class PharmaciesWidget(QWidget):
     def load_pharmacies(self):
         """Load all pharmacies from the database."""
         try:
-            with self.db_manager.get_session() as session:
-                pharmacies = session.query(Pharmacy).order_by(Pharmacy.name).all()
-                # Detach from session
-                self.current_pharmacies = [
-                    session.merge(p, load=False) for p in pharmacies
-                ]
+            # Use get_all() which works with both DatabaseManager and DatabaseClient
+            pharmacies = self.db_manager.get_all(Pharmacy)
+            self.current_pharmacies = pharmacies
             
             self.populate_table(self.current_pharmacies)
             self.update_count_label()
@@ -138,30 +136,30 @@ class PharmaciesWidget(QWidget):
             self.table.insertRow(row)
             
             # ID
-            id_item = QTableWidgetItem(str(pharmacy.id))
+            id_item = QTableWidgetItem(str(get_id(pharmacy)))
             id_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(row, 0, id_item)
             
             # Name
-            name_item = QTableWidgetItem(pharmacy.name)
+            name_item = QTableWidgetItem(get_name(pharmacy))
             self.table.setItem(row, 1, name_item)
             
             # Reference
-            ref_item = QTableWidgetItem(pharmacy.reference)
+            ref_item = QTableWidgetItem(get_attr(pharmacy, 'reference', ''))
             self.table.setItem(row, 2, ref_item)
             
             # Contact Person
-            contact = pharmacy.contact_person or ""
+            contact = get_attr(pharmacy, 'contact_person', '')
             contact_item = QTableWidgetItem(contact)
             self.table.setItem(row, 3, contact_item)
             
             # Phone
-            phone = pharmacy.phone or ""
+            phone = get_attr(pharmacy, 'phone', '')
             phone_item = QTableWidgetItem(phone)
             self.table.setItem(row, 4, phone_item)
             
             # Email
-            email = pharmacy.email or ""
+            email = get_attr(pharmacy, 'email', '')
             email_item = QTableWidgetItem(email)
             self.table.setItem(row, 5, email_item)
         
@@ -178,11 +176,11 @@ class PharmaciesWidget(QWidget):
             # Filter pharmacies
             filtered = [
                 p for p in self.current_pharmacies
-                if search_text in p.name.lower() or
-                   search_text in p.reference.lower() or
-                   (p.contact_person and search_text in p.contact_person.lower()) or
-                   (p.phone and search_text in p.phone.lower()) or
-                   (p.email and search_text in p.email.lower())
+                if search_text in get_name(p, '').lower() or
+                   search_text in get_attr(p, 'reference', '').lower() or
+                   search_text in get_attr(p, 'contact_person', '').lower() or
+                   search_text in get_attr(p, 'phone', '').lower() or
+                   search_text in get_attr(p, 'email', '').lower()
             ]
             self.populate_table(filtered)
     
@@ -207,7 +205,7 @@ class PharmaciesWidget(QWidget):
         
         # Find the pharmacy in current list
         for pharmacy in self.current_pharmacies:
-            if pharmacy.id == pharmacy_id:
+            if get_id(pharmacy) == pharmacy_id:
                 return pharmacy
         
         return None
@@ -255,7 +253,7 @@ class PharmaciesWidget(QWidget):
                 else:
                     result = QMessageBox.question(
                         self, "Confirm Delete",
-                        f"Are you sure you want to delete the pharmacy '{pharmacy.name}'?",
+                        f"Are you sure you want to delete the pharmacy '{get_name(pharmacy)}'?",
                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                         QMessageBox.StandardButton.No
                     )

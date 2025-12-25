@@ -22,6 +22,7 @@ from PyQt6.QtCore import Qt
 
 from src.database.db_manager import DatabaseManager
 from src.database.models import MedicalCentre
+from src.utils.model_helpers import get_attr, get_id, get_name, get_nested_attr
 
 
 class MedicalCentresWidget(QWidget):
@@ -212,30 +213,30 @@ class MedicalCentresWidget(QWidget):
         
         for row, centre in enumerate(centres):
             # ID
-            id_item = QTableWidgetItem(str(centre.id))
+            id_item = QTableWidgetItem(str(get_id(centre)))
             id_item.setData(Qt.ItemDataRole.UserRole, centre)
             self.table.setItem(row, 0, id_item)
             
             # Name
-            name_item = QTableWidgetItem(centre.name)
+            name_item = QTableWidgetItem(get_name(centre))
             self.table.setItem(row, 1, name_item)
             
             # Reference
-            ref_item = QTableWidgetItem(centre.reference)
+            ref_item = QTableWidgetItem(get_attr(centre, 'reference', ''))
             self.table.setItem(row, 2, ref_item)
             
             # Address
-            address = centre.address or ""
+            address = get_attr(centre, 'address', '')
             address_item = QTableWidgetItem(address)
             self.table.setItem(row, 3, address_item)
             
             # Contact Person
-            contact = centre.contact_person or ""
+            contact = get_attr(centre, 'contact_person', '')
             contact_item = QTableWidgetItem(contact)
             self.table.setItem(row, 4, contact_item)
             
             # Phone
-            phone = centre.phone or ""
+            phone = get_attr(centre, 'phone', '')
             phone_item = QTableWidgetItem(phone)
             self.table.setItem(row, 5, phone_item)
         
@@ -250,11 +251,11 @@ class MedicalCentresWidget(QWidget):
         else:
             filtered = [
                 centre for centre in self.current_centres
-                if search_text in centre.name.lower() or
-                   search_text in centre.reference.lower() or
-                   (centre.address and search_text in centre.address.lower()) or
-                   (centre.contact_person and search_text in centre.contact_person.lower()) or
-                   (centre.phone and search_text in centre.phone.lower())
+                if search_text in get_name(centre, '').lower() or
+                   search_text in get_attr(centre, 'reference', '').lower() or
+                   search_text in get_attr(centre, 'address', '').lower() or
+                   search_text in get_attr(centre, 'contact_person', '').lower() or
+                   search_text in get_attr(centre, 'phone', '').lower()
             ]
             self.populate_table(filtered)
     
@@ -316,11 +317,9 @@ class MedicalCentresWidget(QWidget):
             return
         
         # Check if centre has associated coupons
-        with self.db_manager.get_session() as session:
-            from database import PatientCoupon
-            coupon_count = session.query(PatientCoupon).filter(
-                PatientCoupon.medical_centre_id == centre.id
-            ).count()
+        from src.database.models import PatientCoupon
+        all_coupons = self.db_manager.get_all(PatientCoupon)
+        coupon_count = sum(1 for c in all_coupons if get_attr(c, 'medical_centre_id') == get_id(centre))
         
         if coupon_count > 0:
             QMessageBox.warning(
@@ -336,8 +335,8 @@ class MedicalCentresWidget(QWidget):
             self,
             "Confirm Deletion",
             f"Are you sure you want to delete:\n\n"
-            f"Name: {centre.name}\n"
-            f"Reference: {centre.reference}\n\n"
+            f"Name: {get_name(centre)}\n"
+            f"Reference: {get_attr(centre, 'reference', '')}\n\n"
             f"This action cannot be undone.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
@@ -345,11 +344,11 @@ class MedicalCentresWidget(QWidget):
         
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                self.db_manager.delete(MedicalCentre, centre.id)
+                self.db_manager.delete(MedicalCentre, get_id(centre))
                 QMessageBox.information(
                     self,
                     "Success",
-                    f"Medical centre '{centre.name}' deleted successfully."
+                    f"Medical centre '{get_name(centre)}' deleted successfully."
                 )
                 self.load_centres()
             except Exception as e:

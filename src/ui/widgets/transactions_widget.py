@@ -13,10 +13,12 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QFont
 
+
 from src.database.db_manager import DatabaseManager
 from src.database.models import Transaction, Product, DistributionLocation
 from src.services.stock_service import StockService
 from src.ui.dialogs.transaction_dialog import TransactionDialog
+from src.utils.model_helpers import get_attr, get_nested_attr
 
 
 class TransactionsWidget(QWidget):
@@ -170,31 +172,30 @@ class TransactionsWidget(QWidget):
     
     def load_filter_data(self):
         """Load products and locations for filters."""
-        with self.db_manager.get_session() as session:
-            # Load products
-            products = session.query(Product).order_by(Product.name).all()
-            self.product_filter.clear()
-            self.product_filter.addItem("All Products", None)
-            for product in products:
-                self.product_filter.addItem(f"{product.name} ({product.reference})", product.id)
-            
-            # Load locations
-            locations = session.query(DistributionLocation).order_by(DistributionLocation.name).all()
-            self.location_filter.clear()
-            self.location_filter.addItem("All Locations", None)
-            for location in locations:
-                self.location_filter.addItem(location.name, location.id)
+        # Load products
+        products = sorted(self.db_manager.get_all(Product), key=lambda p: get_attr(p, 'name', ''))
+        self.product_filter.clear()
+        self.product_filter.addItem("All Products", None)
+        for product in products:
+            self.product_filter.addItem(f"{get_attr(product, 'name', '')} ({get_attr(product, 'reference', '')})", get_attr(product, 'id'))
+        
+        # Load locations
+        locations = sorted(self.db_manager.get_all(DistributionLocation), key=lambda l: get_attr(l, 'name', ''))
+        self.location_filter.clear()
+        self.location_filter.addItem("All Locations", None)
+        for location in locations:
+            self.location_filter.addItem(get_attr(location, 'name', ''), get_attr(location, 'id'))
     
     def load_transactions(self):
         """Load all transactions into the table."""
-        with self.db_manager.get_session() as session:
-            transactions = session.query(Transaction).order_by(
-                Transaction.transaction_date.desc(),
-                Transaction.created_at.desc()
-            ).all()
-            
-            self.populate_table(transactions)
-            self.update_summary(transactions)
+        transactions = sorted(
+            self.db_manager.get_all(Transaction),
+            key=lambda t: (t.transaction_date, t.created_at),
+            reverse=True
+        )
+        
+        self.populate_table(transactions)
+        self.update_summary(transactions)
     
     def populate_table(self, transactions):
         """Populate the table with transaction data."""
@@ -202,33 +203,38 @@ class TransactionsWidget(QWidget):
         
         for row, txn in enumerate(transactions):
             # Transaction Reference
-            ref_item = QTableWidgetItem(txn.transaction_reference)
+            ref_item = QTableWidgetItem(get_attr(txn, 'transaction_reference', ''))
             ref_item.setFont(QFont("Consolas", 9))
             self.transactions_table.setItem(row, 0, ref_item)
-            
+
             # Product
-            product_name = txn.product.name if txn.product else "Unknown"
+            product_name = get_nested_attr(txn, 'product.name', 'Unknown')
             product_item = QTableWidgetItem(product_name)
             self.transactions_table.setItem(row, 1, product_item)
-            
+
             # Purchase (Supplier Invoice)
-            invoice_ref = txn.purchase.invoice_number if txn.purchase else "Unknown"
+            invoice_ref = get_nested_attr(txn, 'purchase.invoice_number', 'Unknown')
             po_item = QTableWidgetItem(invoice_ref)
             po_item.setFont(QFont("Consolas", 9))
             self.transactions_table.setItem(row, 2, po_item)
-            
+
             # Distribution Location
-            location_name = txn.distribution_location.name if txn.distribution_location else "Unknown"
+            location_name = get_nested_attr(txn, 'distribution_location.name', 'Unknown')
             location_item = QTableWidgetItem(location_name)
             self.transactions_table.setItem(row, 3, location_item)
-            
+
             # Quantity
-            qty_item = QTableWidgetItem(f"{txn.quantity} pieces")
+            qty_item = QTableWidgetItem(f"{get_attr(txn, 'quantity', 0)} pieces")
             qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.transactions_table.setItem(row, 4, qty_item)
-            
+
             # Transaction Date
-            date_item = QTableWidgetItem(txn.transaction_date.strftime("%d/%m/%Y"))
+            transaction_date = get_attr(txn, 'transaction_date')
+            if transaction_date and hasattr(transaction_date, 'strftime'):
+                date_str = transaction_date.strftime("%d/%m/%Y")
+            else:
+                date_str = str(transaction_date) if transaction_date else ''
+            date_item = QTableWidgetItem(date_str)
             date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.transactions_table.setItem(row, 5, date_item)
             
@@ -262,49 +268,48 @@ class TransactionsWidget(QWidget):
     
     def apply_filters(self):
         """Apply filters to the transactions list."""
-        with self.db_manager.get_session() as session:
-            # Start with all transactions
-            query = session.query(Transaction)
-            
-            # Apply product filter
-            product_id = self.product_filter.currentData()
-            if product_id is not None:
-                query = query.filter(Transaction.product_id == product_id)
-            
-            # Apply location filter
-            location_id = self.location_filter.currentData()
-            if location_id is not None:
-                query = query.filter(Transaction.distribution_location_id == location_id)
-            
-            # Apply date range filter
-            date_from = self.date_from_input.date().toPyDate()
-            date_to = self.date_to_input.date().toPyDate()
-            
-            date_from_dt = datetime(date_from.year, date_from.month, date_from.day, 0, 0, 0)
-            date_to_dt = datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59)
-            
-            query = query.filter(
-                Transaction.transaction_date >= date_from_dt,
-                Transaction.transaction_date <= date_to_dt
-            )
-            
-            # Apply search filter
-            search_text = self.search_input.text().strip()
-            if search_text:
-                query = query.filter(
-                    Transaction.transaction_reference.ilike(f"%{search_text}%")
-                )
-            
-            # Order results
-            query = query.order_by(
-                Transaction.transaction_date.desc(),
-                Transaction.created_at.desc()
-            )
-            
-            transactions = query.all()
-            
-            self.populate_table(transactions)
-            self.update_summary(transactions)
+        # Get all transactions
+        all_transactions = self.db_manager.get_all(Transaction)
+        
+        # Apply product filter
+        product_id = self.product_filter.currentData()
+        if product_id is not None:
+            all_transactions = [t for t in all_transactions if t.product_id == product_id]
+        
+        # Apply location filter
+        location_id = self.location_filter.currentData()
+        if location_id is not None:
+            all_transactions = [t for t in all_transactions if t.distribution_location_id == location_id]
+        
+        # Apply date range filter
+        date_from = self.date_from_input.date().toPyDate()
+        date_to = self.date_to_input.date().toPyDate()
+        
+        date_from_dt = datetime(date_from.year, date_from.month, date_from.day, 0, 0, 0)
+        date_to_dt = datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59)
+        
+        all_transactions = [
+            t for t in all_transactions 
+            if date_from_dt <= t.transaction_date <= date_to_dt
+        ]
+        
+        # Apply search filter
+        search_text = self.search_input.text().strip().lower()
+        if search_text:
+            all_transactions = [
+                t for t in all_transactions 
+                if search_text in (t.transaction_reference or '').lower()
+            ]
+        
+        # Sort results
+        transactions = sorted(
+            all_transactions,
+            key=lambda t: (t.transaction_date, t.created_at),
+            reverse=True
+        )
+        
+        self.populate_table(transactions)
+        self.update_summary(transactions)
     
     def add_transaction(self):
         """Open dialog to add a new transaction."""

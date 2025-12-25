@@ -6,7 +6,20 @@ When configured in client mode, all database operations are forwarded
 to the API server instead of accessing SQLite directly.
 """
 
-import requests
+import sys
+
+# Check if requests module is available
+try:
+    import requests
+except ImportError:
+    print("ERROR: 'requests' module not found!")
+    print("\nThe API client mode requires the 'requests' package.")
+    print("Please install it with: pip install requests")
+    print("\nOr disable API client mode in config.ini:")
+    print("  [server]")
+    print("  mode = local")
+    sys.exit(1)
+
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from contextlib import contextmanager
@@ -147,6 +160,55 @@ class DatabaseClient:
         """Delete purchase order"""
         try:
             self._request('DELETE', f'/purchase_orders/{order_id}')
+            return True
+        except RuntimeError:
+            return False
+    
+    # ==================== Purchase (Supplier Invoice) Operations ====================
+    
+    def get_all_purchases(self) -> List[Dict]:
+        """Get all supplier purchases"""
+        response = self._request('GET', '/purchases')
+        return response.json()
+    
+    def get_purchase(self, purchase_id: int) -> Optional[Dict]:
+        """Get purchase by ID"""
+        try:
+            response = self._request('GET', f'/purchases/{purchase_id}')
+            return response.json()
+        except RuntimeError:
+            return None
+    
+    def create_purchase(self, invoice_number: str, purchase_order_id: int,
+                       product_id: int, quantity: int, unit_price: float,
+                       total_price: float, remaining_stock: int = None,
+                       purchase_date: str = None, supplier_name: str = None,
+                       notes: str = None) -> Dict:
+        """Create new supplier purchase"""
+        data = {
+            'invoice_number': invoice_number,
+            'purchase_order_id': purchase_order_id,
+            'product_id': product_id,
+            'quantity': quantity,
+            'remaining_stock': remaining_stock if remaining_stock is not None else quantity,
+            'unit_price': unit_price,
+            'total_price': total_price,
+            'purchase_date': purchase_date or datetime.now().isoformat(),
+            'supplier_name': supplier_name,
+            'notes': notes
+        }
+        response = self._request('POST', '/purchases', json=data)
+        return response.json()
+    
+    def update_purchase(self, purchase_id: int, **kwargs) -> Dict:
+        """Update existing purchase"""
+        response = self._request('PUT', f'/purchases/{purchase_id}', json=kwargs)
+        return response.json()
+    
+    def delete_purchase(self, purchase_id: int) -> bool:
+        """Delete purchase"""
+        try:
+            self._request('DELETE', f'/purchases/{purchase_id}')
             return True
         except RuntimeError:
             return False
@@ -425,13 +487,14 @@ class DatabaseClient:
         Generic get_all method that routes to model-specific methods.
         Maintains compatibility with DatabaseManager interface.
         """
-        from .models import (Product, PurchaseOrder, Pharmacy, DistributionLocation, 
+        from .models import (Product, PurchaseOrder, Purchase, Pharmacy, DistributionLocation, 
                            MedicalCentre, PatientCoupon, Transaction)
         
         # Map model classes to their specific get_all methods
         model_map = {
             Product: self.get_all_products,
             PurchaseOrder: self.get_all_purchase_orders,
+            Purchase: self.get_all_purchases,
             Pharmacy: self.get_all_pharmacies,
             DistributionLocation: self.get_all_distribution_locations,
             MedicalCentre: self.get_all_medical_centres,
@@ -454,7 +517,7 @@ class DatabaseClient:
         Maintains compatibility with DatabaseManager interface.
         Note: This extracts data from the model object and sends to API.
         """
-        from .models import (Product, PurchaseOrder, Pharmacy, DistributionLocation, 
+        from .models import (Product, PurchaseOrder, Purchase, Pharmacy, DistributionLocation, 
                            MedicalCentre, PatientCoupon, Transaction)
         
         model_class = type(record)
@@ -479,6 +542,19 @@ class DatabaseClient:
                 total_without_tax=record.total_without_tax,
                 total_with_tax=record.total_with_tax,
                 remaining_stock=record.remaining_stock
+            )
+        elif model_class == Purchase:
+            return self.create_purchase(
+                invoice_number=record.invoice_number,
+                purchase_order_id=record.purchase_order_id,
+                product_id=record.product_id,
+                quantity=record.quantity,
+                unit_price=float(record.unit_price),
+                total_price=float(record.total_price),
+                remaining_stock=record.remaining_stock,
+                purchase_date=record.purchase_date.isoformat() if hasattr(record.purchase_date, 'isoformat') else record.purchase_date,
+                supplier_name=getattr(record, 'supplier_name', None),
+                notes=getattr(record, 'notes', None)
             )
         elif model_class == Pharmacy:
             return self.create_pharmacy(
@@ -548,7 +624,7 @@ class DatabaseClient:
         - delete(Product, 5) - Delete by model class and ID
         - delete(product_object) - Delete by object (uses object.id)
         """
-        from .models import (Product, PurchaseOrder, Pharmacy, DistributionLocation, 
+        from .models import (Product, PurchaseOrder, Purchase, Pharmacy, DistributionLocation, 
                            MedicalCentre, PatientCoupon, Transaction)
         
         # Handle both delete(Model, id) and delete(object) signatures
@@ -565,6 +641,7 @@ class DatabaseClient:
         delete_map = {
             Product: self.delete_product,
             PurchaseOrder: self.delete_purchase_order,
+            Purchase: self.delete_purchase,
             Pharmacy: self.delete_pharmacy,
             DistributionLocation: self.delete_distribution_location,
             MedicalCentre: self.delete_medical_centre,

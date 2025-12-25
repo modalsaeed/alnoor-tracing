@@ -33,6 +33,7 @@ from src.database.models import (
     MedicalCentre, DistributionLocation, Pharmacy
 )
 from src.services.stock_service import StockService
+from src.utils.model_helpers import get_attr, get_id, get_name, get_nested_attr
 
 
 class ReportsWidget(QWidget):
@@ -446,40 +447,43 @@ class ReportsWidget(QWidget):
     def load_recent_delivery_notes(self):
         """Load recent delivery notes from the database."""
         try:
-            with self.db_manager.get_session() as session:
-                # Get coupons with delivery notes, grouped by delivery note number
-                coupons = session.query(PatientCoupon).filter(
-                    PatientCoupon.delivery_note_number.isnot(None)
-                ).order_by(PatientCoupon.created_at.desc()).limit(100).all()
+            # Get coupons with delivery notes
+            all_coupons = self.db_manager.get_all(PatientCoupon)
+            coupons = [
+                c for c in all_coupons 
+                if c.delivery_note_number is not None
+            ]
+            # Sort by created_at desc and take first 100
+            coupons = sorted(coupons, key=lambda c: c.created_at, reverse=True)[:100]
+            
+            # Group by delivery note number
+            dn_groups = {}
+            for coupon in coupons:
+                dn_num = get_attr(coupon, 'delivery_note_number')
+                if dn_num not in dn_groups:
+                    dn_groups[dn_num] = {
+                        'coupons': [],
+                        'date': coupon.created_at,
+                        'centre': get_nested_attr(coupon, 'medical_centre.name', 'N/A'),
+                        'product': get_nested_attr(coupon, 'product.name', 'N/A')
+                    }
+                dn_groups[dn_num]['coupons'].append(coupon)
+            
+            # Populate table
+            self.recent_dn_table.setRowCount(0)
+            for dn_num, data in list(dn_groups.items())[:10]:  # Show last 10
+                row = self.recent_dn_table.rowCount()
+                self.recent_dn_table.insertRow(row)
                 
-                # Group by delivery note number
-                dn_groups = {}
-                for coupon in coupons:
-                    dn_num = coupon.delivery_note_number
-                    if dn_num not in dn_groups:
-                        dn_groups[dn_num] = {
-                            'coupons': [],
-                            'date': coupon.created_at,
-                            'centre': coupon.medical_centre.name if coupon.medical_centre else "N/A",
-                            'product': coupon.product.name if coupon.product else "N/A"
-                        }
-                    dn_groups[dn_num]['coupons'].append(coupon)
+                self.recent_dn_table.setItem(row, 0, QTableWidgetItem(dn_num))
+                self.recent_dn_table.setItem(row, 1, QTableWidgetItem(data['centre']))
+                self.recent_dn_table.setItem(row, 2, QTableWidgetItem(data['product']))
                 
-                # Populate table
-                self.recent_dn_table.setRowCount(0)
-                for dn_num, data in list(dn_groups.items())[:10]:  # Show last 10
-                    row = self.recent_dn_table.rowCount()
-                    self.recent_dn_table.insertRow(row)
-                    
-                    self.recent_dn_table.setItem(row, 0, QTableWidgetItem(dn_num))
-                    self.recent_dn_table.setItem(row, 1, QTableWidgetItem(data['centre']))
-                    self.recent_dn_table.setItem(row, 2, QTableWidgetItem(data['product']))
-                    
-                    total_pieces = sum(c.quantity_pieces for c in data['coupons'])
-                    self.recent_dn_table.setItem(row, 3, QTableWidgetItem(str(total_pieces)))
-                    
-                    date_str = data['date'].strftime("%d/%m/%Y %H:%M")
-                    self.recent_dn_table.setItem(row, 4, QTableWidgetItem(date_str))
+                total_pieces = sum(get_attr(c, 'quantity_pieces', 0) for c in data['coupons'])
+                self.recent_dn_table.setItem(row, 3, QTableWidgetItem(str(total_pieces)))
+                
+                date_str = data['date'].strftime("%d/%m/%Y %H:%M")
+                self.recent_dn_table.setItem(row, 4, QTableWidgetItem(date_str))
         except Exception as e:
             print(f"Error loading recent delivery notes: {e}")
     
@@ -638,7 +642,7 @@ class ReportsWidget(QWidget):
             self.coupon_product_filter.clear()
             self.coupon_product_filter.addItem("All Products", None)
             for product in products:
-                self.coupon_product_filter.addItem(product.name, product.id)
+                self.coupon_product_filter.addItem(get_name(product), get_id(product))
         except Exception as e:
             print(f"Error loading product filter: {e}")
     
@@ -649,7 +653,7 @@ class ReportsWidget(QWidget):
             self.coupon_medical_centre_filter.clear()
             self.coupon_medical_centre_filter.addItem("All Centres", None)
             for centre in centres:
-                self.coupon_medical_centre_filter.addItem(centre.name, centre.id)
+                self.coupon_medical_centre_filter.addItem(get_name(centre), get_id(centre))
         except Exception as e:
             print(f"Error loading medical centre filter: {e}")
     
@@ -660,7 +664,7 @@ class ReportsWidget(QWidget):
             self.coupon_distribution_filter.clear()
             self.coupon_distribution_filter.addItem("All Locations", None)
             for location in locations:
-                self.coupon_distribution_filter.addItem(location.name, location.id)
+                self.coupon_distribution_filter.addItem(get_name(location), get_id(location))
         except Exception as e:
             print(f"Error loading distribution filter: {e}")
     
@@ -674,191 +678,191 @@ class ReportsWidget(QWidget):
             
             self.stock_table.setRowCount(0)
             
-            with self.db_manager.get_session() as session:
-                # Section 1: Remaining Local Purchase Orders (non-empty only)
-                local_pos = session.query(PurchaseOrder).filter(
-                    PurchaseOrder.remaining_stock > 0
-                ).all()
+            # Section 1: Remaining Local Purchase Orders (non-empty only)
+            all_pos = self.db_manager.get_all(PurchaseOrder)
+            local_pos = [po for po in all_pos if po.remaining_stock > 0]
+            
+            if local_pos:
+                self.add_section_header("📋 Local Purchase Orders (Remaining)")
                 
-                if local_pos:
-                    self.add_section_header("📋 Local Purchase Orders (Remaining)")
-                    
-                    total_lpo_qty = 0
-                    total_lpo_price = 0
-                    
-                    for po in local_pos:
-                        row = self.stock_table.rowCount()
-                        self.stock_table.insertRow(row)
-                        
-                        self.stock_table.setItem(row, 0, QTableWidgetItem("Local PO"))
-                        
-                        item_name = f"{po.po_reference} - {po.product.name if po.product else 'N/A'}"
-                        self.stock_table.setItem(row, 1, QTableWidgetItem(item_name))
-                        
-                        qty_item = QTableWidgetItem(str(po.remaining_stock))
-                        qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                        self.stock_table.setItem(row, 2, qty_item)
-                        
-                        unit_price = float(po.unit_price) if po.unit_price else 0
-                        unit_price_item = QTableWidgetItem(f"{unit_price:.3f}")
-                        unit_price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
-                        self.stock_table.setItem(row, 3, unit_price_item)
-                        
-                        remaining_price = unit_price * po.remaining_stock
-                        price_item = QTableWidgetItem(f"{remaining_price:.3f}")
-                        price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
-                        self.stock_table.setItem(row, 4, price_item)
-                        
-                        notes = f"Total: {po.quantity} | Used: {po.quantity - po.remaining_stock}"
-                        self.stock_table.setItem(row, 5, QTableWidgetItem(notes))
-                        
-                        total_lpo_qty += po.remaining_stock
-                        total_lpo_price += remaining_price
-                    
-                    # Add subtotal row
-                    self.add_subtotal_row("Local PO Total", total_lpo_qty, total_lpo_price)
+                total_lpo_qty = 0
+                total_lpo_price = 0
                 
-                # Section 2: Remaining Supplier Purchases (non-empty only)
-                supplier_purchases = session.query(Purchase).filter(
-                    Purchase.remaining_stock > 0
-                ).all()
+                for po in local_pos:
+                    row = self.stock_table.rowCount()
+                    self.stock_table.insertRow(row)
+                    
+                    self.stock_table.setItem(row, 0, QTableWidgetItem("Local PO"))
+                    
+                    item_name = f"{get_attr(po, 'po_reference', '')} - {get_nested_attr(po, 'product.name', 'N/A')}"
+                    self.stock_table.setItem(row, 1, QTableWidgetItem(item_name))
+                    
+                    qty_item = QTableWidgetItem(str(po.remaining_stock))
+                    qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.stock_table.setItem(row, 2, qty_item)
+                    
+                    unit_price = float(po.unit_price) if po.unit_price else 0
+                    unit_price_item = QTableWidgetItem(f"{unit_price:.3f}")
+                    unit_price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
+                    self.stock_table.setItem(row, 3, unit_price_item)
+                    
+                    remaining_price = unit_price * po.remaining_stock
+                    price_item = QTableWidgetItem(f"{remaining_price:.3f}")
+                    price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
+                    self.stock_table.setItem(row, 4, price_item)
+                    
+                    notes = f"Total: {po.quantity} | Used: {po.quantity - po.remaining_stock}"
+                    self.stock_table.setItem(row, 5, QTableWidgetItem(notes))
+                    
+                    total_lpo_qty += po.remaining_stock
+                    total_lpo_price += remaining_price
                 
-                if supplier_purchases:
-                    self.add_section_header("🚚 Supplier Purchases (Remaining)")
-                    
-                    total_sp_qty = 0
-                    total_sp_price = 0
-                    
-                    for purchase in supplier_purchases:
-                        row = self.stock_table.rowCount()
-                        self.stock_table.insertRow(row)
-                        
-                        self.stock_table.setItem(row, 0, QTableWidgetItem("Supplier Purchase"))
-                        
-                        item_name = f"{purchase.invoice_number} - {purchase.product.name if purchase.product else 'N/A'}"
-                        if purchase.supplier_name:
-                            item_name += f" ({purchase.supplier_name})"
-                        self.stock_table.setItem(row, 1, QTableWidgetItem(item_name))
-                        
-                        qty_item = QTableWidgetItem(str(purchase.remaining_stock))
-                        qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                        self.stock_table.setItem(row, 2, qty_item)
-                        
-                        unit_price = float(purchase.unit_price)
-                        unit_price_item = QTableWidgetItem(f"{unit_price:.3f}")
-                        unit_price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
-                        self.stock_table.setItem(row, 3, unit_price_item)
-                        
-                        remaining_price = unit_price * purchase.remaining_stock
-                        price_item = QTableWidgetItem(f"{remaining_price:.3f}")
-                        price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
-                        self.stock_table.setItem(row, 4, price_item)
-                        
-                        notes = f"Total: {purchase.quantity} | Used: {purchase.quantity - purchase.remaining_stock}"
-                        self.stock_table.setItem(row, 5, QTableWidgetItem(notes))
-                        
-                        total_sp_qty += purchase.remaining_stock
-                        total_sp_price += remaining_price
-                    
-                    # Add subtotal row
-                    self.add_subtotal_row("Supplier Purchase Total", total_sp_qty, total_sp_price)
+                # Add subtotal row
+                self.add_subtotal_row("Local PO Total", total_lpo_qty, total_lpo_price)
+            
+            # Section 2: Remaining Supplier Purchases (non-empty only)
+            all_purchases = self.db_manager.get_all(Purchase)
+            supplier_purchases = [p for p in all_purchases if p.remaining_stock > 0]
+            
+            if supplier_purchases:
+                self.add_section_header("🚚 Supplier Purchases (Remaining)")
                 
-                # Section 3: Stock Distributed to Pharmacies (within date range)
-                transactions = session.query(Transaction).filter(
-                    Transaction.transaction_date >= date_from_dt,
-                    Transaction.transaction_date <= date_to_dt
-                ).all()
+                total_sp_qty = 0
+                total_sp_price = 0
                 
-                if transactions:
-                    self.add_section_header(f"🏥 Distributed to Pharmacies ({date_from.strftime('%d/%m/%Y')} - {date_to.strftime('%d/%m/%Y')})")
+                for purchase in supplier_purchases:
+                    row = self.stock_table.rowCount()
+                    self.stock_table.insertRow(row)
                     
-                    # Group by pharmacy
-                    pharmacy_totals = {}
-                    no_pharmacy_total = 0
+                    self.stock_table.setItem(row, 0, QTableWidgetItem("Supplier Purchase"))
                     
-                    for txn in transactions:
-                        location = txn.distribution_location
-                        if location:
-                            if location.pharmacy_id:
-                                pharmacy = location.pharmacy
-                                pharmacy_name = pharmacy.name if pharmacy else f"Pharmacy ID {location.pharmacy_id}"
-                                
-                                if pharmacy_name not in pharmacy_totals:
-                                    pharmacy_totals[pharmacy_name] = {
-                                        'total_qty': 0,
-                                        'locations': {}
-                                    }
-                                
-                                loc_name = location.name
-                                if loc_name not in pharmacy_totals[pharmacy_name]['locations']:
-                                    pharmacy_totals[pharmacy_name]['locations'][loc_name] = 0
-                                
-                                pharmacy_totals[pharmacy_name]['locations'][loc_name] += txn.quantity
-                                pharmacy_totals[pharmacy_name]['total_qty'] += txn.quantity
-                            else:
-                                # Location without pharmacy - treat as independent
-                                loc_name = f"🏪 {location.name} (Independent)"
-                                if loc_name not in pharmacy_totals:
-                                    pharmacy_totals[loc_name] = {
-                                        'total_qty': 0,
-                                        'locations': {}
-                                    }
-                                pharmacy_totals[loc_name]['total_qty'] += txn.quantity
+                    item_name = f"{get_attr(purchase, 'invoice_number', '')} - {get_nested_attr(purchase, 'product.name', 'N/A')}"
+                    supplier_name = get_attr(purchase, 'supplier_name', '')
+                    if supplier_name:
+                        item_name += f" ({supplier_name})"
+                    self.stock_table.setItem(row, 1, QTableWidgetItem(item_name))
                     
-                    grand_total_qty = 0
+                    qty_item = QTableWidgetItem(str(purchase.remaining_stock))
+                    qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.stock_table.setItem(row, 2, qty_item)
                     
-                    # Display pharmacy totals with location breakdown
-                    for pharmacy_name, data in pharmacy_totals.items():
-                        # Pharmacy total row
-                        row = self.stock_table.rowCount()
-                        self.stock_table.insertRow(row)
-                        
-                        self.stock_table.setItem(row, 0, QTableWidgetItem("Pharmacy"))
-                        
-                        pharmacy_item = QTableWidgetItem(pharmacy_name)
-                        font = pharmacy_item.font()
-                        font.setBold(True)
-                        pharmacy_item.setFont(font)
-                        self.stock_table.setItem(row, 1, pharmacy_item)
-                        
-                        qty_item = QTableWidgetItem(str(data['total_qty']))
-                        qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                        font = qty_item.font()
-                        font.setBold(True)
-                        qty_item.setFont(font)
-                        self.stock_table.setItem(row, 2, qty_item)
-                        
-                        self.stock_table.setItem(row, 3, QTableWidgetItem("-"))
-                        self.stock_table.setItem(row, 4, QTableWidgetItem("-"))
-                        self.stock_table.setItem(row, 5, QTableWidgetItem(""))
-                        
-                        # Set background color for pharmacy rows
-                        bg_color = QColor("#e3f2fd")
-                        for col in range(6):
-                            if self.stock_table.item(row, col):
-                                self.stock_table.item(row, col).setBackground(bg_color)
-                        
-                        # Location breakdown (if it's a real pharmacy with locations)
-                        if data['locations']:
-                            for loc_name, loc_qty in data['locations'].items():
-                                row = self.stock_table.rowCount()
-                                self.stock_table.insertRow(row)
-                                
-                                self.stock_table.setItem(row, 0, QTableWidgetItem("  └─ Location"))
-                                self.stock_table.setItem(row, 1, QTableWidgetItem(f"  {loc_name}"))
-                                
-                                loc_qty_item = QTableWidgetItem(str(loc_qty))
-                                loc_qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                                self.stock_table.setItem(row, 2, loc_qty_item)
-                                
-                                self.stock_table.setItem(row, 3, QTableWidgetItem("-"))
-                                self.stock_table.setItem(row, 4, QTableWidgetItem("-"))
-                                self.stock_table.setItem(row, 5, QTableWidgetItem(""))
-                        
-                        grand_total_qty += data['total_qty']
+                    unit_price = float(purchase.unit_price)
+                    unit_price_item = QTableWidgetItem(f"{unit_price:.3f}")
+                    unit_price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
+                    self.stock_table.setItem(row, 3, unit_price_item)
                     
-                    # Add grand total row
-                    self.add_subtotal_row("Total Distributed", grand_total_qty, None)
+                    remaining_price = unit_price * purchase.remaining_stock
+                    price_item = QTableWidgetItem(f"{remaining_price:.3f}")
+                    price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
+                    self.stock_table.setItem(row, 4, price_item)
+                    
+                    notes = f"Total: {purchase.quantity} | Used: {purchase.quantity - purchase.remaining_stock}"
+                    self.stock_table.setItem(row, 5, QTableWidgetItem(notes))
+                    
+                    total_sp_qty += purchase.remaining_stock
+                    total_sp_price += remaining_price
+                
+                # Add subtotal row
+                self.add_subtotal_row("Supplier Purchase Total", total_sp_qty, total_sp_price)
+            
+            # Section 3: Stock Distributed to Pharmacies (within date range)
+            all_transactions = self.db_manager.get_all(Transaction)
+            transactions = [
+                t for t in all_transactions
+                if date_from_dt <= t.transaction_date <= date_to_dt
+            ]
+            
+            if transactions:
+                self.add_section_header(f"🏥 Distributed to Pharmacies ({date_from.strftime('%d/%m/%Y')} - {date_to.strftime('%d/%m/%Y')})")
+                
+                # Group by pharmacy
+                pharmacy_totals = {}
+                no_pharmacy_total = 0
+                
+                for txn in transactions:
+                    location = get_attr(txn, 'distribution_location')
+                    if location:
+                        pharmacy_id = get_attr(location, 'pharmacy_id')
+                        if pharmacy_id:
+                            pharmacy = get_attr(location, 'pharmacy')
+                            pharmacy_name = get_name(pharmacy, f"Pharmacy ID {pharmacy_id}")
+                            
+                            if pharmacy_name not in pharmacy_totals:
+                                pharmacy_totals[pharmacy_name] = {
+                                    'total_qty': 0,
+                                    'locations': {}
+                                }
+                            
+                            loc_name = get_name(location)
+                            if loc_name not in pharmacy_totals[pharmacy_name]['locations']:
+                                pharmacy_totals[pharmacy_name]['locations'][loc_name] = 0
+                            
+                            pharmacy_totals[pharmacy_name]['locations'][loc_name] += get_attr(txn, 'quantity', 0)
+                            pharmacy_totals[pharmacy_name]['total_qty'] += get_attr(txn, 'quantity', 0)
+                        else:
+                            # Location without pharmacy - treat as independent
+                            loc_name = f"🏪 {get_name(location)} (Independent)"
+                            if loc_name not in pharmacy_totals:
+                                pharmacy_totals[loc_name] = {
+                                    'total_qty': 0,
+                                    'locations': {}
+                                }
+                            pharmacy_totals[loc_name]['total_qty'] += get_attr(txn, 'quantity', 0)
+                
+                grand_total_qty = 0
+                
+                # Display pharmacy totals with location breakdown
+                for pharmacy_name, data in pharmacy_totals.items():
+                    # Pharmacy total row
+                    row = self.stock_table.rowCount()
+                    self.stock_table.insertRow(row)
+                    
+                    self.stock_table.setItem(row, 0, QTableWidgetItem("Pharmacy"))
+                    
+                    pharmacy_item = QTableWidgetItem(pharmacy_name)
+                    font = pharmacy_item.font()
+                    font.setBold(True)
+                    pharmacy_item.setFont(font)
+                    self.stock_table.setItem(row, 1, pharmacy_item)
+                    
+                    qty_item = QTableWidgetItem(str(data['total_qty']))
+                    qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    font = qty_item.font()
+                    font.setBold(True)
+                    qty_item.setFont(font)
+                    self.stock_table.setItem(row, 2, qty_item)
+                    
+                    self.stock_table.setItem(row, 3, QTableWidgetItem("-"))
+                    self.stock_table.setItem(row, 4, QTableWidgetItem("-"))
+                    self.stock_table.setItem(row, 5, QTableWidgetItem(""))
+                    
+                    # Set background color for pharmacy rows
+                    bg_color = QColor("#e3f2fd")
+                    for col in range(6):
+                        if self.stock_table.item(row, col):
+                            self.stock_table.item(row, col).setBackground(bg_color)
+                    
+                    # Location breakdown (if it's a real pharmacy with locations)
+                    if data['locations']:
+                        for loc_name, loc_qty in data['locations'].items():
+                            row = self.stock_table.rowCount()
+                            self.stock_table.insertRow(row)
+                            
+                            self.stock_table.setItem(row, 0, QTableWidgetItem("  └─ Location"))
+                            self.stock_table.setItem(row, 1, QTableWidgetItem(f"  {loc_name}"))
+                            
+                            loc_qty_item = QTableWidgetItem(str(loc_qty))
+                            loc_qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                            self.stock_table.setItem(row, 2, loc_qty_item)
+                            
+                            self.stock_table.setItem(row, 3, QTableWidgetItem("-"))
+                            self.stock_table.setItem(row, 4, QTableWidgetItem("-"))
+                            self.stock_table.setItem(row, 5, QTableWidgetItem(""))
+                    
+                    grand_total_qty += data['total_qty']
+                
+                # Add grand total row
+                self.add_subtotal_row("Total Distributed", grand_total_qty, None)
                 
                 # Update summary label
                 summary_text = f"📊 Report Period: {date_from.strftime('%d/%m/%Y')} to {date_to.strftime('%d/%m/%Y')}"
@@ -1012,26 +1016,26 @@ class ReportsWidget(QWidget):
                 ))
                 
                 # Patient
-                self.coupon_table.setItem(row, 1, QTableWidgetItem(coupon.patient_name))
+                self.coupon_table.setItem(row, 1, QTableWidgetItem(get_attr(coupon, 'patient_name', '')))
                 
                 # CPR
-                self.coupon_table.setItem(row, 2, QTableWidgetItem(coupon.cpr))
+                self.coupon_table.setItem(row, 2, QTableWidgetItem(get_attr(coupon, 'cpr', '')))
                 
                 # Product
-                product_name = coupon.product.name if coupon.product else "Unknown"
+                product_name = get_nested_attr(coupon, 'product.name', 'Unknown')
                 self.coupon_table.setItem(row, 3, QTableWidgetItem(product_name))
                 
                 # Quantity
-                quantity_item = QTableWidgetItem(f"{coupon.quantity_pieces} pcs")
+                quantity_item = QTableWidgetItem(f"{get_attr(coupon, 'quantity_pieces', 0)} pcs")
                 quantity_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.coupon_table.setItem(row, 4, quantity_item)
                 
                 # Medical Centre
-                centre_name = coupon.medical_centre.name if coupon.medical_centre else "Unknown"
+                centre_name = get_nested_attr(coupon, 'medical_centre.name', 'Unknown')
                 self.coupon_table.setItem(row, 5, QTableWidgetItem(centre_name))
                 
                 # Distribution Location
-                location_name = coupon.distribution_location.name if coupon.distribution_location else "Unknown"
+                location_name = get_nested_attr(coupon, 'distribution_location.name', 'Unknown')
                 self.coupon_table.setItem(row, 6, QTableWidgetItem(location_name))
                 
                 # Status
@@ -1068,9 +1072,9 @@ class ReportsWidget(QWidget):
                     activities.append({
                         'datetime': coupon.created_at,
                         'type': 'Coupon',
-                        'entity': coupon.patient_name,
+                        'entity': get_attr(coupon, 'patient_name', ''),
                         'action': 'Verified' if coupon.verified else 'Created',
-                        'details': f"{coupon.product.name if coupon.product else 'Unknown'} - {coupon.quantity_pieces} pcs"
+                        'details': f"{get_nested_attr(coupon, 'product.name', 'Unknown')} - {get_attr(coupon, 'quantity_pieces', 0)} pcs"
                     })
             
             # Sort by datetime (newest first)

@@ -8,9 +8,11 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
+
 from src.database import Pharmacy
 from src.database.db_manager import DatabaseManager
 from src.utils import sanitize_input, validate_reference
+from src.utils.model_helpers import get_attr, get_id, get_name, get_nested_attr
 
 
 class PharmacyDialog(QDialog):
@@ -166,67 +168,51 @@ class PharmacyDialog(QDialog):
             reference = None
         
         try:
-            with self.db_manager.get_session() as session:
-                if self.is_edit_mode:
-                    # Update existing pharmacy
-                    self.pharmacy.name = name
-                    self.pharmacy.reference = reference if reference else None
-                    self.pharmacy.trn = trn if trn else None
-                    self.pharmacy.contact_person = contact_person if contact_person else None
-                    self.pharmacy.phone = phone if phone else None
-                    self.pharmacy.email = email if email else None
-                    self.pharmacy.notes = notes if notes else None
-                    
-                    session.add(self.pharmacy)
-                    session.commit()
-                    
-                    QMessageBox.information(self, "Success", "Pharmacy updated successfully.")
-                else:
-                    # Check for duplicate name
-                    existing = session.query(Pharmacy).filter(
-                        Pharmacy.name == name
-                    ).first()
-                    
+            if self.is_edit_mode:
+                # Update existing pharmacy
+                self.pharmacy.name = name
+                self.pharmacy.reference = reference if reference else None
+                self.pharmacy.trn = trn if trn else None
+                self.pharmacy.contact_person = contact_person if contact_person else None
+                self.pharmacy.phone = phone if phone else None
+                self.pharmacy.email = email if email else None
+                self.pharmacy.notes = notes if notes else None
+                self.db_manager.add(self.pharmacy)
+                QMessageBox.information(self, "Success", "Pharmacy updated successfully.")
+            else:
+                # Check for duplicate name
+                all_pharmacies = self.db_manager.get_all(Pharmacy)
+                existing = next((p for p in all_pharmacies if get_attr(p, 'name') == name), None)
+                if existing:
+                    QMessageBox.warning(
+                        self, "Duplicate Entry",
+                        f"A pharmacy with the name '{name}' already exists."
+                    )
+                    self.name_input.setFocus()
+                    return
+                # Check for duplicate reference if provided
+                if reference:
+                    existing = next((p for p in all_pharmacies if get_attr(p, 'reference') == reference), None)
                     if existing:
                         QMessageBox.warning(
                             self, "Duplicate Entry",
-                            f"A pharmacy with the name '{name}' already exists."
+                            f"A pharmacy with the reference '{reference}' already exists."
                         )
-                        self.name_input.setFocus()
+                        self.reference_input.setFocus()
                         return
-                    
-                    # Check for duplicate reference if provided
-                    if reference:
-                        existing = session.query(Pharmacy).filter(
-                            Pharmacy.reference == reference
-                        ).first()
-                        
-                        if existing:
-                            QMessageBox.warning(
-                                self, "Duplicate Entry",
-                                f"A pharmacy with the reference '{reference}' already exists."
-                            )
-                            self.reference_input.setFocus()
-                            return
-                    
-                    # Create new pharmacy
-                    new_pharmacy = Pharmacy(
-                        name=name,
-                        reference=reference if reference else None,
-                        trn=trn if trn else None,
-                        contact_person=contact_person if contact_person else None,
-                        phone=phone if phone else None,
-                        email=email if email else None,
-                        notes=notes if notes else None
-                    )
-                    
-                    session.add(new_pharmacy)
-                    session.commit()
-                    
-                    QMessageBox.information(self, "Success", "Pharmacy created successfully.")
-                
-                self.pharmacy_saved.emit()
-                self.accept()
-                
+                # Create new pharmacy
+                new_pharmacy = Pharmacy(
+                    name=name,
+                    reference=reference if reference else None,
+                    trn=trn if trn else None,
+                    contact_person=contact_person if contact_person else None,
+                    phone=phone if phone else None,
+                    email=email if email else None,
+                    notes=notes if notes else None
+                )
+                self.db_manager.add(new_pharmacy)
+                QMessageBox.information(self, "Success", "Pharmacy created successfully.")
+            self.pharmacy_saved.emit()
+            self.accept()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save pharmacy: {str(e)}")

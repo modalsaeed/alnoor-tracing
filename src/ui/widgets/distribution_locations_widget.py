@@ -24,6 +24,7 @@ from PyQt6.QtGui import QColor
 from src.database.db_manager import DatabaseManager
 from src.database.models import DistributionLocation, Transaction, Product, PatientCoupon
 from sqlalchemy import func
+from src.utils.model_helpers import get_attr, get_id, get_name, get_nested_attr
 
 
 class DistributionLocationsWidget(QWidget):
@@ -211,78 +212,69 @@ class DistributionLocationsWidget(QWidget):
             Dictionary with total stock and breakdown by product
         """
         try:
-            with self.db_manager.get_session() as session:
-                # Get all transactions for this location (Stock IN) grouped by product
-                transactions = session.query(
-                    Transaction.product_id,
-                    Product.name,
-                    func.sum(Transaction.quantity).label('total_in')
-                ).join(
-                    Product, Transaction.product_id == Product.id
-                ).filter(
-                    Transaction.distribution_location_id == location_id
-                ).group_by(
-                    Transaction.product_id, Product.name
-                ).all()
-                
-                # Get all coupons from this location (Stock OUT) grouped by product
-                coupons = session.query(
-                    PatientCoupon.product_id,
-                    Product.name,
-                    func.sum(PatientCoupon.quantity_pieces).label('total_out')
-                ).join(
-                    Product, PatientCoupon.product_id == Product.id
-                ).filter(
-                    PatientCoupon.distribution_location_id == location_id
-                ).group_by(
-                    PatientCoupon.product_id, Product.name
-                ).all()
-                
-                # Create a dictionary to track stock by product
-                stock_by_product = {}
-                
-                # Add transactions (stock IN)
-                for t in transactions:
-                    stock_by_product[t.product_id] = {
-                        'product_name': t.name,
-                        'stock_in': t.total_in,
-                        'stock_out': 0,
-                        'net_stock': t.total_in
-                    }
-                
-                # Subtract coupons (stock OUT)
-                for c in coupons:
-                    if c.product_id in stock_by_product:
-                        stock_by_product[c.product_id]['stock_out'] = c.total_out
-                        stock_by_product[c.product_id]['net_stock'] -= c.total_out
-                    else:
-                        # Coupon exists but no transactions (shouldn't happen, but handle it)
-                        stock_by_product[c.product_id] = {
-                            'product_name': c.name,
-                            'stock_in': 0,
-                            'stock_out': c.total_out,
-                            'net_stock': -c.total_out  # Negative stock (overdrawn)
+            # Get all transactions and coupons for this location
+            all_transactions = self.db_manager.get_all(Transaction)
+            all_coupons = self.db_manager.get_all(PatientCoupon)
+            all_products = self.db_manager.get_all(Product)
+            
+            # Filter and aggregate transactions (Stock IN) by product
+            product_stock = {}
+            for txn in all_transactions:
+                if get_attr(txn, 'distribution_location_id') == location_id:
+                    product_id = get_attr(txn, 'product_id')
+                    if product_id not in product_stock:
+                        product = next((p for p in all_products if get_id(p) == product_id), None)
+                        product_stock[product_id] = {
+                            'name': get_name(product, 'Unknown'),
+                            'in': 0,
+                            'out': 0
                         }
-                
-                # Calculate total net stock
-                total_stock = sum(p['net_stock'] for p in stock_by_product.values())
-                
-                # Create products breakdown list
-                products_breakdown = [
-                    {
-                        'product_id': product_id,
-                        'product_name': data['product_name'],
-                        'quantity': data['net_stock'],
-                        'stock_in': data['stock_in'],
-                        'stock_out': data['stock_out']
-                    }
-                    for product_id, data in stock_by_product.items()
-                ]
-                
-                return {
-                    'total_stock': total_stock,
-                    'products': products_breakdown
+                    product_stock[product_id]['in'] += get_attr(txn, 'quantity', 0)
+            
+            # Filter and aggregate coupons (Stock OUT) by product
+            for coupon in all_coupons:
+                if get_attr(coupon, 'distribution_location_id') == location_id:
+                    product_id = get_attr(coupon, 'product_id')
+                    if product_id not in product_stock:
+                        product = next((p for p in all_products if get_id(p) == product_id), None)
+                        product_stock[product_id] = {
+                            'name': get_name(product, 'Unknown'),
+                            'in': 0,
+                            'out': 0
+                        }
+                    product_stock[product_id]['out'] += get_attr(coupon, 'quantity_pieces', 0)
+            
+            # Create a dictionary to track stock by product
+            stock_by_product = {}
+            
+            # Process all products
+            for product_id, data in product_stock.items():
+                stock_by_product[product_id] = {
+                    'product_name': data['name'],
+                    'stock_in': data['in'],
+                    'stock_out': data['out'],
+                    'net_stock': data['in'] - data['out']
                 }
+            
+            # Calculate total net stock
+            total_stock = sum(p['net_stock'] for p in stock_by_product.values())
+            
+            # Create products breakdown list
+            products_breakdown = [
+                {
+                    'product_id': product_id,
+                    'product_name': data['product_name'],
+                    'quantity': data['net_stock'],
+                    'stock_in': data['stock_in'],
+                    'stock_out': data['stock_out']
+                }
+                for product_id, data in stock_by_product.items()
+            ]
+            
+            return {
+                'total_stock': total_stock,
+                'products': products_breakdown
+            }
         except Exception as e:
             return {'total_stock': 0, 'products': []}
     
@@ -306,35 +298,35 @@ class DistributionLocationsWidget(QWidget):
         
         for row, location in enumerate(locations):
             # ID
-            id_item = QTableWidgetItem(str(location.id))
+            id_item = QTableWidgetItem(str(get_id(location)))
             id_item.setData(Qt.ItemDataRole.UserRole, location)
             self.table.setItem(row, 0, id_item)
             
             # Name
-            name_item = QTableWidgetItem(location.name)
+            name_item = QTableWidgetItem(get_name(location))
             self.table.setItem(row, 1, name_item)
             
             # Reference
-            ref_item = QTableWidgetItem(location.reference)
+            ref_item = QTableWidgetItem(get_attr(location, 'reference', ''))
             self.table.setItem(row, 2, ref_item)
             
             # Address
-            address = location.address or ""
+            address = get_attr(location, 'address', '')
             address_item = QTableWidgetItem(address)
             self.table.setItem(row, 3, address_item)
             
             # Contact Person
-            contact = location.contact_person or ""
+            contact = get_attr(location, 'contact_person', '')
             contact_item = QTableWidgetItem(contact)
             self.table.setItem(row, 4, contact_item)
             
             # Phone
-            phone = location.phone or ""
+            phone = get_attr(location, 'phone', '')
             phone_item = QTableWidgetItem(phone)
             self.table.setItem(row, 5, phone_item)
             
             # Total Stock
-            stock_info = self.get_location_stock(location.id)
+            stock_info = self.get_location_stock(get_id(location))
             total_stock = stock_info['total_stock']
             stock_item = QTableWidgetItem(f"{total_stock} pieces")
             stock_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -379,11 +371,11 @@ class DistributionLocationsWidget(QWidget):
         else:
             filtered = [
                 loc for loc in self.current_locations
-                if search_text in loc.name.lower() or
-                   search_text in loc.reference.lower() or
-                   (loc.address and search_text in loc.address.lower()) or
-                   (loc.contact_person and search_text in loc.contact_person.lower()) or
-                   (loc.phone and search_text in loc.phone.lower())
+                if search_text in get_name(loc, '').lower() or
+                   search_text in get_attr(loc, 'reference', '').lower() or
+                   search_text in get_attr(loc, 'address', '').lower() or
+                   search_text in get_attr(loc, 'contact_person', '').lower() or
+                   search_text in get_attr(loc, 'phone', '').lower()
             ]
             self.populate_table(filtered)
     
@@ -445,11 +437,9 @@ class DistributionLocationsWidget(QWidget):
             return
         
         # Check if location has associated coupons
-        with self.db_manager.get_session() as session:
-            from database import PatientCoupon
-            coupon_count = session.query(PatientCoupon).filter(
-                PatientCoupon.distribution_location_id == location.id
-            ).count()
+        from src.database.models import PatientCoupon
+        all_coupons = self.db_manager.get_all(PatientCoupon)
+        coupon_count = sum(1 for c in all_coupons if get_attr(c, 'distribution_location_id') == get_id(location))
         
         if coupon_count > 0:
             QMessageBox.warning(
@@ -465,8 +455,8 @@ class DistributionLocationsWidget(QWidget):
             self,
             "Confirm Deletion",
             f"Are you sure you want to delete:\n\n"
-            f"Name: {location.name}\n"
-            f"Reference: {location.reference}\n\n"
+            f"Name: {get_name(location)}\n"
+            f"Reference: {get_attr(location, 'reference', '')}\n\n"
             f"This action cannot be undone.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
@@ -474,11 +464,11 @@ class DistributionLocationsWidget(QWidget):
         
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                self.db_manager.delete(DistributionLocation, location.id)
+                self.db_manager.delete(DistributionLocation, get_id(location))
                 QMessageBox.information(
                     self,
                     "Success",
-                    f"Distribution location '{location.name}' deleted successfully."
+                    f"Distribution location '{get_name(location)}' deleted successfully."
                 )
                 self.load_locations()
             except Exception as e:

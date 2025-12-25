@@ -19,6 +19,7 @@ from sqlalchemy.orm import joinedload
 
 from src.database.db_manager import DatabaseManager
 from src.database.models import PatientCoupon, MedicalCentre
+from src.utils.model_helpers import get_attr, get_id, get_name, get_nested_attr
 
 
 class AddGRVReferenceDialog(QDialog):

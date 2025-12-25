@@ -76,6 +76,10 @@ a = Analysis(
         'openpyxl',
         'dateutil',
         'pytz',
+        
+        # API client (only needed if using client mode)
+        'requests',
+        'urllib3',
     ],
     hookspath=[],
     hooksconfig={},

@@ -91,7 +91,7 @@ logs/
 Thumbs.db
 desktop.ini
 .DS_Store
-
+config.ini
 # Application data (user generated)
 data/alnoor.db
 data/alnoor_backup_*.db

@@ -22,6 +22,7 @@ from PyQt6.QtCore import Qt
 from src.database.db_manager import DatabaseManager
 from src.database.models import DistributionLocation, Pharmacy
 from src.utils import validate_name, validate_reference, validate_phone, sanitize_input, normalize_reference
+from src.utils.model_helpers import get_attr, get_id, get_name, get_nested_attr
 
 
 class DistributionLocationDialog(QDialog):

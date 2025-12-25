@@ -18,9 +18,11 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
+
 from src.database.db_manager import DatabaseManager
 from src.database.models import Product
 from src.utils import validate_name, validate_reference, sanitize_input, normalize_reference
+from src.utils.model_helpers import get_attr, get_id, get_name, get_nested_attr
 
 
 class ProductDialog(QDialog):
@@ -156,11 +158,9 @@ class ProductDialog(QDialog):
     def is_reference_duplicate(self, reference: str) -> bool:
         """Check if reference already exists in database."""
         try:
-            with self.db_manager.get_session() as session:
-                existing = session.query(Product).filter(
-                    Product.reference == reference.upper()
-                ).first()
-                return existing is not None
+            all_products = self.db_manager.get_all(Product)
+            existing = next((p for p in all_products if get_attr(p, 'reference') == reference.upper()), None)
+            return existing is not None
         except Exception:
             return False
     

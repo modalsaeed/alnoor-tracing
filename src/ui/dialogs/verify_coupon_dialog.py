@@ -27,6 +27,7 @@ from PyQt6.QtGui import QFont
 
 from src.database.db_manager import DatabaseManager
 from src.database.models import PatientCoupon
+from src.utils.model_helpers import get_attr, get_id, get_name, get_nested_attr
 
 
 class VerifyCouponDialog(QDialog):
@@ -291,25 +292,27 @@ class VerifyCouponDialog(QDialog):
             verified_count = 0
             failed_coupons = []
             
-            with self.db_manager.get_session() as session:
-                for coupon in self.coupons:
-                    try:
-                        # Get coupon from session
-                        db_coupon = session.query(PatientCoupon).get(coupon.id)
-                        if not db_coupon:
-                            failed_coupons.append(f"{coupon.id}: Coupon not found in database")
-                            continue
-                        
-                        # Update coupon verification status and delivery note
-                        db_coupon.verified = True
-                        db_coupon.verification_reference = verification_ref
-                        db_coupon.delivery_note_number = delivery_note
-                        db_coupon.date_verified = datetime.now()
-                        
-                        verified_count += 1
-                        
-                    except Exception as e:
-                        failed_coupons.append(f"{coupon.id}: {str(e)}")
+            # Use db_manager.get_all and helpers for compatibility
+            all_coupons = self.db_manager.get_all(PatientCoupon)
+            for coupon in self.coupons:
+                try:
+                    db_coupon = next((m for m in all_coupons if get_id(m) == get_id(coupon)), None)
+                    if not db_coupon:
+                        failed_coupons.append(f"{get_id(coupon)}: Coupon not found in database")
+                        continue
+                    
+                    # Update coupon via db_manager
+                    self.db_manager.update(PatientCoupon, get_id(db_coupon), {
+                        'verified': True,
+                        'verification_reference': verification_ref,
+                        'delivery_note_number': delivery_note,
+                        'date_verified': datetime.now()
+                    })
+                    
+                    verified_count += 1
+                    
+                except Exception as e:
+                    failed_coupons.append(f"{get_id(coupon)}: {str(e)}")
                 
                 # Commit happens automatically when exiting the context manager
             

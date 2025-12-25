@@ -164,7 +164,7 @@ def health_check():
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.now().isoformat(),
-        'version': '1.0.7',
+        'version': '1.0.10',
         'logging': 'enabled' if ENABLE_LOGGING else 'disabled'
     })
 
@@ -174,13 +174,16 @@ def health_check():
 @app.route('/products', methods=['GET'])
 def get_products():
     """Get all products"""
+    import traceback
     try:
         with db_manager.get_session() as session:
             products = session.query(Product).all()
         log_request('/products', f"- Retrieved {len(products)} products")
         return jsonify(serialize_list(products))
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        tb = traceback.format_exc()
+        print(f"\n[SERVER ERROR] /products\n{tb}\n", flush=True)
+        return jsonify({'error': str(e), 'traceback': tb}), 500
 
 
 @app.route('/products/<int:product_id>', methods=['GET'])
@@ -437,7 +440,108 @@ def delete_purchase_order(order_id):
         session.commit()
         
         return jsonify({'message': 'Purchase order deleted successfully'})
-    except Exception as e:        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+# ==================== PURCHASE (SUPPLIER INVOICE) ENDPOINTS ====================
+
+@app.route('/purchases', methods=['GET'])
+def get_purchases():
+    """Get all supplier purchases"""
+    try:
+        with db_manager.get_session() as session:
+            purchases = session.query(Purchase).all()
+            return jsonify([serialize_model(p) for p in purchases])
+    except Exception as e:
+        print(f"ERROR getting purchases: {e}", file=sys.stderr)
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/purchases/<int:purchase_id>', methods=['GET'])
+def get_purchase(purchase_id):
+    """Get purchase by ID"""
+    try:
+        with db_manager.get_session() as session:
+            purchase = session.query(Purchase).filter_by(id=purchase_id).first()
+        if not purchase:
+            return jsonify({'error': 'Purchase not found'}), 404
+        return jsonify(serialize_model(purchase))
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/purchases', methods=['POST'])
+def create_purchase():
+    """Create new supplier purchase"""
+    try:
+        data = request.get_json()
+        with db_manager.get_session() as session:
+            purchase = Purchase(
+                invoice_number=data['invoice_number'],
+                purchase_order_id=data['purchase_order_id'],
+                product_id=data['product_id'],
+                quantity=data['quantity'],
+                remaining_stock=data.get('remaining_stock', data['quantity']),
+                unit_price=data['unit_price'],
+                total_price=data['total_price'],
+                purchase_date=datetime.fromisoformat(data['purchase_date']) if 'purchase_date' in data else datetime.utcnow(),
+                supplier_name=data.get('supplier_name'),
+                notes=data.get('notes')
+            )
+            session.add(purchase)
+            session.commit()
+            return jsonify(serialize_model(purchase)), 201
+    except Exception as e:
+        print(f"ERROR creating purchase: {e}", file=sys.stderr)
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 400
+
+
+@app.route('/purchases/<int:purchase_id>', methods=['PUT'])
+def update_purchase(purchase_id):
+    """Update existing purchase"""
+    try:
+        data = request.get_json()
+        with db_manager.get_session() as session:
+            purchase = session.query(Purchase).filter_by(id=purchase_id).first()
+        if not purchase:
+            return jsonify({'error': 'Purchase not found'}), 404
+        
+        # Update fields
+        if 'remaining_stock' in data:
+            purchase.remaining_stock = data['remaining_stock']
+        if 'supplier_name' in data:
+            purchase.supplier_name = data['supplier_name']
+        if 'notes' in data:
+            purchase.notes = data['notes']
+        
+        purchase.updated_at = datetime.utcnow()
+        session.commit()
+        
+        return jsonify(serialize_model(purchase))
+    except Exception as e:
+        print(f"ERROR updating purchase: {e}", file=sys.stderr)
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/purchases/<int:purchase_id>', methods=['DELETE'])
+def delete_purchase(purchase_id):
+    """Delete purchase"""
+    try:
+        with db_manager.get_session() as session:
+            purchase = session.query(Purchase).filter_by(id=purchase_id).first()
+        if not purchase:
+            return jsonify({'error': 'Purchase not found'}), 404
+        
+        session.delete(purchase)
+        session.commit()
+        
+        return jsonify({'message': 'Purchase deleted successfully'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
 
 
 # ==================== PHARMACY ENDPOINTS ====================

@@ -15,6 +15,7 @@ from PyQt6.QtCore import Qt, QDate
 from src.database.db_manager import DatabaseManager
 from src.database.models import PatientCoupon, MedicalCentre, PurchaseOrder
 from src.utils import Colors, StyleSheets
+from src.utils.model_helpers import get_attr, get_id, get_name, get_nested_attr
 
 
 class DNcopiesReportDialog(QDialog):

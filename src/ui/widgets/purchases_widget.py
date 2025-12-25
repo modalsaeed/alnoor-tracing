@@ -25,6 +25,7 @@ from datetime import datetime
 from src.database.db_manager import DatabaseManager
 from src.database.models import Purchase, PurchaseOrder, Product
 from src.utils import Colors, Fonts, Spacing, StyleSheets, IconStyles
+from src.utils.model_helpers import get_attr, get_id, get_name, get_nested_attr
 
 
 class PurchasesWidget(QWidget):
@@ -182,12 +183,13 @@ class PurchasesWidget(QWidget):
     def load_purchases(self):
         """Load all purchases from database."""
         try:
-            with self.db_manager.get_session() as session:
-                self.current_purchases = session.query(Purchase).order_by(
-                    Purchase.purchase_date.desc()
-                ).all()
-                self.display_purchases(self.current_purchases)
-                self.update_count_label()
+            self.current_purchases = sorted(
+                self.db_manager.get_all(Purchase),
+                key=lambda p: p.purchase_date,
+                reverse=True
+            )
+            self.display_purchases(self.current_purchases)
+            self.update_count_label()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load purchases: {e}")
     
@@ -200,13 +202,13 @@ class PurchasesWidget(QWidget):
             self.table.insertRow(row)
             
             # ID (hidden)
-            self.table.setItem(row, 0, QTableWidgetItem(str(purchase.id)))
+            self.table.setItem(row, 0, QTableWidgetItem(str(get_id(purchase))))
             
             # Invoice Number
-            self.table.setItem(row, 1, QTableWidgetItem(purchase.invoice_number))
+            self.table.setItem(row, 1, QTableWidgetItem(get_attr(purchase, 'invoice_number', '')))
             
             # Supplier
-            supplier = purchase.supplier_name or "N/A"
+            supplier = get_attr(purchase, 'supplier_name', 'N/A')
             self.table.setItem(row, 2, QTableWidgetItem(supplier))
             
             # Purchase Date
@@ -214,11 +216,11 @@ class PurchasesWidget(QWidget):
             self.table.setItem(row, 3, QTableWidgetItem(date_str))
             
             # Local PO Reference
-            po_ref = purchase.purchase_order.po_reference if purchase.purchase_order else "N/A"
+            po_ref = get_nested_attr(purchase, 'purchase_order.po_reference', 'N/A')
             self.table.setItem(row, 4, QTableWidgetItem(po_ref))
             
             # Product Name
-            product_name = purchase.product.name if purchase.product else "N/A"
+            product_name = get_nested_attr(purchase, 'product.name', 'N/A')
             self.table.setItem(row, 5, QTableWidgetItem(product_name))
             
             # Quantity
@@ -264,10 +266,10 @@ class PurchasesWidget(QWidget):
         text = text.lower()
         filtered = [
             p for p in self.current_purchases
-            if text in p.invoice_number.lower()
-            or (p.supplier_name and text in p.supplier_name.lower())
-            or (p.product and text in p.product.name.lower())
-            or (p.purchase_order and text in p.purchase_order.po_reference.lower())
+            if text in get_attr(p, 'invoice_number', '').lower()
+            or text in get_attr(p, 'supplier_name', '').lower()
+            or text in get_nested_attr(p, 'product.name', '').lower()
+            or text in get_nested_attr(p, 'purchase_order.po_reference', '').lower()
         ]
         self.display_purchases(filtered)
     
@@ -292,7 +294,7 @@ class PurchasesWidget(QWidget):
         row = selected_rows[0].row()
         purchase_id = int(self.table.item(row, 0).text())
         
-        return next((p for p in self.current_purchases if p.id == purchase_id), None)
+        return next((p for p in self.current_purchases if get_id(p) == purchase_id), None)
     
     def add_purchase(self):
         """Open dialog to add a new purchase."""
@@ -349,8 +351,8 @@ class PurchasesWidget(QWidget):
             self,
             "Confirm Deletion",
             f"Are you sure you want to delete purchase:\n"
-            f"Invoice: {purchase.invoice_number}\n"
-            f"Supplier: {purchase.supplier_name or 'N/A'}\n"
+            f"Invoice: {get_attr(purchase, 'invoice_number', '')}\n"
+            f"Supplier: {get_attr(purchase, 'supplier_name', 'N/A')}\n"
             f"Quantity: {purchase.quantity}",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
@@ -359,22 +361,14 @@ class PurchasesWidget(QWidget):
             return
         
         try:
-            with self.db_manager.get_session() as session:
-                # Get fresh purchase object in this session
-                purchase_to_delete = session.query(Purchase).get(purchase.id)
-                if not purchase_to_delete:
-                    QMessageBox.warning(self, "Error", "Purchase not found.")
-                    return
-                
-                # Restore the PO remaining stock
-                if purchase_to_delete.purchase_order:
-                    purchase_to_delete.purchase_order.remaining_stock += purchase_to_delete.quantity
-                
-                session.delete(purchase_to_delete)
-                session.commit()
-                
-                QMessageBox.information(self, "Success", "Purchase deleted successfully.")
-                self.load_purchases()
+            # Use db_manager.delete() which works with both local and client mode
+            success = self.db_manager.delete(Purchase, get_id(purchase))
+            if not success:
+                QMessageBox.warning(self, "Error", "Purchase not found.")
+                return
+            
+            QMessageBox.information(self, "Success", "Purchase deleted successfully.")
+            self.load_purchases()
             
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to delete purchase: {e}")
