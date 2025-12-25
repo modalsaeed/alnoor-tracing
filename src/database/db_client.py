@@ -26,6 +26,15 @@ from contextlib import contextmanager
 
 
 class DatabaseClient:
+    def update_medical_centre(self, centre_id: int, **kwargs) -> dict:
+        """Update existing medical centre"""
+        response = self._request('PUT', f'/medical_centres/{centre_id}', json=kwargs)
+        return response.json()
+    
+    def update_distribution_location(self, location_id: int, **kwargs) -> dict:
+        """Update existing distribution location"""
+        response = self._request('PUT', f'/distribution_locations/{location_id}', json=kwargs)
+        return response.json()
     """
     HTTP client for database API operations.
     Mimics DatabaseManager interface for seamless integration.
@@ -504,9 +513,9 @@ class DatabaseClient:
         
         method = model_map.get(model_class)
         if method:
-            # Convert dict responses to simple objects for compatibility
             results = method()
-            # Return as-is (dicts) - widgets should handle both objects and dicts
+            if results is None:
+                return []
             return results
         else:
             raise NotImplementedError(f"get_all not implemented for {model_class.__name__}")
@@ -515,50 +524,82 @@ class DatabaseClient:
         """
         Generic add method that routes to model-specific create methods.
         Maintains compatibility with DatabaseManager interface.
-        Note: This extracts data from the model object and sends to API.
+        Accepts both ORM objects and dicts.
+        Only creates new records (must not have an id).
         """
         from .models import (Product, PurchaseOrder, Purchase, Pharmacy, DistributionLocation, 
                            MedicalCentre, PatientCoupon, Transaction)
-        
-        model_class = type(record)
-        
+        # Accept dicts as well as ORM objects
+        if isinstance(record, dict):
+            model_class = record.get('__model_class__')
+            if not model_class:
+                # Fallback: guess by keys
+                if 'unit' in record and 'reference' in record and 'name' in record:
+                    model_class = Product
+                elif 'po_reference' in record and 'product_id' in record:
+                    model_class = PurchaseOrder
+                elif 'invoice_number' in record and 'purchase_order_id' in record:
+                    model_class = Purchase
+                elif 'trn' in record and 'name' in record and 'contact_person' in record:
+                    model_class = Pharmacy
+                elif 'pharmacy_id' in record and 'name' in record and 'address' in record:
+                    model_class = DistributionLocation
+                elif 'address' in record and 'contact_person' in record and 'phone' in record:
+                    model_class = MedicalCentre
+                elif 'coupon_reference' in record and 'product_id' in record:
+                    model_class = PatientCoupon
+                elif 'transaction_type' in record and 'product_id' in record:
+                    model_class = Transaction
+                else:
+                    raise NotImplementedError("add not implemented for dict with unknown structure")
+            # If record has an id, treat as update, not add
+            if record.get('id') is not None:
+                raise ValueError("add() called with record that already has an id; use update() instead")
+            from types import SimpleNamespace
+            record_obj = SimpleNamespace(**record)
+            record = record_obj
+        else:
+            model_class = type(record)
+            if hasattr(record, 'id') and getattr(record, 'id', None) is not None:
+                raise ValueError("add() called with record that already has an id; use update() instead")
+        # ...existing code for model_class dispatch...
         if model_class == Product:
             return self.create_product(
-                name=record.name,
-                reference=record.reference,
-                unit=record.unit,
-                description=record.description
+                name=getattr(record, 'name', None),
+                reference=getattr(record, 'reference', None),
+                unit=getattr(record, 'unit', None),
+                description=getattr(record, 'description', None)
             )
         elif model_class == PurchaseOrder:
             return self.create_purchase_order(
-                product_id=record.product_id,
-                quantity=record.quantity,
-                po_reference=record.po_reference,
-                product_description=record.product_description,
-                warehouse_location=record.warehouse_location,
-                unit_price=record.unit_price,
-                tax_rate=record.tax_rate,
-                tax_amount=record.tax_amount,
-                total_without_tax=record.total_without_tax,
-                total_with_tax=record.total_with_tax,
-                remaining_stock=record.remaining_stock
+                product_id=getattr(record, 'product_id', None),
+                quantity=getattr(record, 'quantity', None),
+                po_reference=getattr(record, 'po_reference', None),
+                product_description=getattr(record, 'product_description', None),
+                warehouse_location=getattr(record, 'warehouse_location', None),
+                unit_price=getattr(record, 'unit_price', None),
+                tax_rate=getattr(record, 'tax_rate', None),
+                tax_amount=getattr(record, 'tax_amount', None),
+                total_without_tax=getattr(record, 'total_without_tax', None),
+                total_with_tax=getattr(record, 'total_with_tax', None),
+                remaining_stock=getattr(record, 'remaining_stock', None)
             )
         elif model_class == Purchase:
             return self.create_purchase(
-                invoice_number=record.invoice_number,
-                purchase_order_id=record.purchase_order_id,
-                product_id=record.product_id,
-                quantity=record.quantity,
-                unit_price=float(record.unit_price),
-                total_price=float(record.total_price),
-                remaining_stock=record.remaining_stock,
-                purchase_date=record.purchase_date.isoformat() if hasattr(record.purchase_date, 'isoformat') else record.purchase_date,
+                invoice_number=getattr(record, 'invoice_number', None),
+                purchase_order_id=getattr(record, 'purchase_order_id', None),
+                product_id=getattr(record, 'product_id', None),
+                quantity=getattr(record, 'quantity', None),
+                unit_price=float(getattr(record, 'unit_price', 0)),
+                total_price=float(getattr(record, 'total_price', 0)),
+                remaining_stock=getattr(record, 'remaining_stock', None),
+                purchase_date=getattr(record, 'purchase_date', None),
                 supplier_name=getattr(record, 'supplier_name', None),
                 notes=getattr(record, 'notes', None)
             )
         elif model_class == Pharmacy:
             return self.create_pharmacy(
-                name=record.name,
+                name=getattr(record, 'name', None),
                 reference=getattr(record, 'reference', None),
                 trn=getattr(record, 'trn', None),
                 contact_person=getattr(record, 'contact_person', None),
@@ -568,17 +609,17 @@ class DatabaseClient:
             )
         elif model_class == DistributionLocation:
             return self.create_distribution_location(
-                name=record.name,
+                name=getattr(record, 'name', None),
                 reference=getattr(record, 'reference', None),
                 trn=getattr(record, 'trn', None),
-                pharmacy_id=record.pharmacy_id,
+                pharmacy_id=getattr(record, 'pharmacy_id', None),
                 address=getattr(record, 'address', None),
                 contact_person=getattr(record, 'contact_person', None),
                 phone=getattr(record, 'phone', None)
             )
         elif model_class == MedicalCentre:
             return self.create_medical_centre(
-                name=record.name,
+                name=getattr(record, 'name', None),
                 reference=getattr(record, 'reference', None),
                 address=getattr(record, 'address', None),
                 contact_person=getattr(record, 'contact_person', None),
@@ -586,13 +627,13 @@ class DatabaseClient:
             )
         elif model_class == PatientCoupon:
             return self.create_patient_coupon(
-                coupon_reference=record.coupon_reference,
+                coupon_reference=getattr(record, 'coupon_reference', None),
                 patient_name=getattr(record, 'patient_name', None),
                 cpr=getattr(record, 'cpr', None),
-                quantity_pieces=record.quantity_pieces,
-                medical_centre_id=record.medical_centre_id,
-                distribution_location_id=record.distribution_location_id,
-                product_id=record.product_id,
+                quantity_pieces=getattr(record, 'quantity_pieces', None),
+                medical_centre_id=getattr(record, 'medical_centre_id', None),
+                distribution_location_id=getattr(record, 'distribution_location_id', None),
+                product_id=getattr(record, 'product_id', None),
                 verified=getattr(record, 'verified', False),
                 verification_reference=getattr(record, 'verification_reference', None),
                 delivery_note_number=getattr(record, 'delivery_note_number', None),
@@ -603,9 +644,9 @@ class DatabaseClient:
             )
         elif model_class == Transaction:
             return self.create_transaction(
-                product_id=record.product_id,
-                quantity=record.quantity,
-                transaction_type=record.transaction_type,
+                product_id=getattr(record, 'product_id', None),
+                quantity=getattr(record, 'quantity', None),
+                transaction_type=getattr(record, 'transaction_type', None),
                 transaction_date=getattr(record, 'transaction_date', None),
                 pharmacy_id=getattr(record, 'pharmacy_id', None),
                 distribution_location_id=getattr(record, 'distribution_location_id', None),
@@ -626,7 +667,6 @@ class DatabaseClient:
         """
         from .models import (Product, PurchaseOrder, Purchase, Pharmacy, DistributionLocation, 
                            MedicalCentre, PatientCoupon, Transaction)
-        
         # Handle both delete(Model, id) and delete(object) signatures
         if record_id is None:
             # Called as delete(object)
@@ -636,7 +676,6 @@ class DatabaseClient:
         else:
             # Called as delete(Model, id)
             model_class = model_or_class
-        
         # Map model classes to their specific delete methods
         delete_map = {
             Product: self.delete_product,
@@ -648,7 +687,6 @@ class DatabaseClient:
             PatientCoupon: self.delete_patient_coupon,
             Transaction: self.delete_transaction,
         }
-        
         method = delete_map.get(model_class)
         if method:
             try:
@@ -657,3 +695,65 @@ class DatabaseClient:
                 return False
         else:
             raise NotImplementedError(f"delete not implemented for {model_class.__name__}")
+
+    def update(self, record):
+        """
+        Generic update method that routes to model-specific update methods.
+        Maintains compatibility with DatabaseManager interface.
+        Accepts both ORM objects and dicts.
+        """
+        from .models import (Product, PurchaseOrder, Purchase, Pharmacy, DistributionLocation, 
+                           MedicalCentre, PatientCoupon, Transaction)
+        if isinstance(record, dict):
+            model_class = record.get('__model_class__')
+            if not model_class:
+                # Fallback: guess by keys
+                if 'unit' in record and 'reference' in record and 'name' in record:
+                    model_class = Product
+                elif 'po_reference' in record and 'product_id' in record:
+                    model_class = PurchaseOrder
+                elif 'invoice_number' in record and 'purchase_order_id' in record:
+                    model_class = Purchase
+                elif 'pharmacy_id' in record and 'name' in record and 'address' in record:
+                    model_class = DistributionLocation
+                elif 'trn' in record and 'name' in record and 'contact_person' in record:
+                    model_class = Pharmacy
+                elif 'address' in record and 'contact_person' in record and 'phone' in record:
+                    model_class = MedicalCentre
+                elif 'coupon_reference' in record and 'product_id' in record:
+                    model_class = PatientCoupon
+                elif 'transaction_type' in record and 'product_id' in record:
+                    model_class = Transaction
+                else:
+                    raise NotImplementedError("update not implemented for dict with unknown structure")
+            record_id = record.get('id')
+            update_data = record.copy()
+            update_data.pop('__model_class__', None)
+            update_data.pop('id', None)
+        else:
+            model_class = type(record)
+            record_id = getattr(record, 'id', None)
+            update_data = {k: getattr(record, k) for k in dir(record) if not k.startswith('_') and not callable(getattr(record, k))}
+            update_data.pop('id', None)
+        # Route to model-specific update method
+        if model_class == Product:
+            return self.update_product(record_id, **update_data)
+        elif model_class == PurchaseOrder:
+            return self.update_purchase_order(record_id, **update_data)
+        elif model_class == Purchase:
+            return self.update_purchase(record_id, **update_data)
+        elif model_class == Pharmacy:
+            return self.update_pharmacy(record_id, **update_data)
+        elif model_class == DistributionLocation:
+            return self.update_distribution_location(record_id, **update_data)
+        elif model_class == MedicalCentre:
+            # No update endpoint implemented for MedicalCentre
+            raise NotImplementedError("update not implemented for MedicalCentre")
+        elif model_class == PatientCoupon:
+            # No update endpoint implemented for PatientCoupon
+            raise NotImplementedError("update not implemented for PatientCoupon")
+        elif model_class == Transaction:
+            # No update endpoint implemented for Transaction
+            raise NotImplementedError("update not implemented for Transaction")
+        else:
+            raise NotImplementedError(f"update not implemented for {model_class.__name__}")

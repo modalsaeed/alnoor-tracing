@@ -227,17 +227,32 @@ class PharmaciesWidget(QWidget):
         dialog.exec()
     
     def delete_pharmacy(self):
-        """Delete the selected pharmacy."""
-        pharmacy = self.get_selected_pharmacy()
-        if not pharmacy:
-            return
-        
-        # Check if pharmacy has distribution locations
-        try:
-            with self.db_manager.get_session() as session:
-                pharmacy = session.merge(pharmacy)
-                location_count = len(pharmacy.distribution_locations)
-                
+                """Delete the selected pharmacy."""
+                pharmacy = self.get_selected_pharmacy()
+                if not pharmacy:
+                    return
+
+                # Determine if using API client or local DB
+                is_api_client = hasattr(self.db_manager, 'get_all_distribution_locations')
+                location_count = 0
+                if is_api_client:
+                    # API client: fetch distribution locations and count those linked to this pharmacy
+                    try:
+                        all_locations = self.db_manager.get_all_distribution_locations()
+                        location_count = sum(1 for loc in all_locations if loc.get('pharmacy_id') == get_id(pharmacy))
+                    except Exception as e:
+                        QMessageBox.critical(self, "Error", f"Failed to check distribution locations: {e}")
+                        return
+                else:
+                    # Local DB: use ORM relationships
+                    try:
+                        with self.db_manager.get_session() as session:
+                            pharmacy_obj = session.merge(pharmacy)
+                            location_count = len(getattr(pharmacy_obj, 'distribution_locations', []))
+                    except Exception as e:
+                        QMessageBox.critical(self, "Error", f"Failed to check distribution locations: {e}")
+                        return
+
                 if location_count > 0:
                     result = QMessageBox.warning(
                         self, "Warning",
@@ -247,7 +262,6 @@ class PharmaciesWidget(QWidget):
                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                         QMessageBox.StandardButton.No
                     )
-                    
                     if result != QMessageBox.StandardButton.Yes:
                         return
                 else:
@@ -257,16 +271,14 @@ class PharmaciesWidget(QWidget):
                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                         QMessageBox.StandardButton.No
                     )
-                    
                     if result != QMessageBox.StandardButton.Yes:
                         return
-                
-                # Delete the pharmacy
-                session.delete(pharmacy)
-                session.commit()
-                
-                QMessageBox.information(self, "Success", "Pharmacy deleted successfully.")
-                self.load_pharmacies()
-                
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to delete pharmacy: {str(e)}")
+
+                # Delete pharmacy
+                try:
+                    self.db_manager.delete(Pharmacy, get_id(pharmacy))
+                    self.load_pharmacies()
+                except Exception as e:
+                    QMessageBox.critical(self, "Error", f"Failed to delete pharmacy: {e}")
+        
+    

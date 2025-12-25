@@ -200,16 +200,18 @@ class PurchaseOrdersWidget(QWidget):
             self.table.setItem(row, 2, product_item)
             
             # Quantity
-            qty_item = QTableWidgetItem(str(order.quantity))
+            qty = get_attr(order, 'quantity', 0)
+            qty_item = QTableWidgetItem(str(qty))
             qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(row, 3, qty_item)
-            
+
             # Remaining Stock
-            remaining_item = QTableWidgetItem(str(order.remaining_stock))
+            remaining_stock = get_attr(order, 'remaining_stock', 0)
+            remaining_item = QTableWidgetItem(str(remaining_stock))
             remaining_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            
+
             # Color code based on stock level
-            percentage = (order.remaining_stock / order.quantity * 100) if order.quantity > 0 else 0
+            percentage = (remaining_stock / qty * 100) if qty > 0 else 0
             if percentage == 0:
                 remaining_item.setBackground(QColor(Colors.ERROR))
                 remaining_item.setForeground(QColor("white"))
@@ -223,16 +225,16 @@ class PurchaseOrdersWidget(QWidget):
             self.table.setItem(row, 4, remaining_item)
             
             # Unit Price
-            if order.unit_price is not None:
-                unit_price = f"{float(order.unit_price):.3f}"
+            unit_price_val = get_attr(order, 'unit_price', None)
+            if unit_price_val is not None:
+                unit_price = f"{float(unit_price_val):.3f}"
                 unit_item = QTableWidgetItem(unit_price)
                 unit_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                unit_item.setToolTip(f"{float(order.unit_price):.3f} BHD per unit")
+                unit_item.setToolTip(f"{float(unit_price_val):.3f} BHD per unit")
             else:
                 unit_item = QTableWidgetItem("-")
                 unit_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 unit_item.setForeground(QColor(Colors.TEXT_SECONDARY))
-            
             self.table.setItem(row, 5, unit_item)
             
             # Tax

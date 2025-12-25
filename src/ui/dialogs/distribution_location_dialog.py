@@ -133,37 +133,42 @@ class DistributionLocationDialog(QDialog):
     def load_pharmacies(self):
         """Load pharmacies into the combo box."""
         try:
-            with self.db_manager.get_session() as session:
-                pharmacies = session.query(Pharmacy).order_by(Pharmacy.name).all()
-                
-                for pharmacy in pharmacies:
-                    self.pharmacy_combo.addItem(pharmacy.name, pharmacy.id)
+            pharmacies = self.db_manager.get_all(Pharmacy)
+            for pharmacy in pharmacies:
+                self.pharmacy_combo.addItem(get_name(pharmacy), get_id(pharmacy))
         except Exception as e:
             print(f"Error loading pharmacies: {e}")
     
     def populate_fields(self):
         """Populate form fields with existing location data."""
         if self.location:
-            self.name_input.setText(self.location.name)
-            if self.location.reference:
-                self.reference_input.setText(self.location.reference)
-            
-            if hasattr(self.location, 'trn') and self.location.trn:
-                self.trn_input.setText(self.location.trn)
-            
+            from src.utils.model_helpers import get_attr
+            self.name_input.setText(get_attr(self.location, 'name', ''))
+            reference = get_attr(self.location, 'reference', '')
+            if reference:
+                self.reference_input.setText(reference)
+
+            trn = get_attr(self.location, 'trn', '')
+            if trn:
+                self.trn_input.setText(trn)
+
             # Set pharmacy if assigned
-            if self.location.pharmacy_id:
+            pharmacy_id = get_attr(self.location, 'pharmacy_id', None)
+            if pharmacy_id:
                 for i in range(self.pharmacy_combo.count()):
-                    if self.pharmacy_combo.itemData(i) == self.location.pharmacy_id:
+                    if self.pharmacy_combo.itemData(i) == pharmacy_id:
                         self.pharmacy_combo.setCurrentIndex(i)
                         break
-            
-            if self.location.address:
-                self.address_input.setPlainText(self.location.address)
-            if self.location.contact_person:
-                self.contact_input.setText(self.location.contact_person)
-            if self.location.phone:
-                self.phone_input.setText(self.location.phone)
+
+            address = get_attr(self.location, 'address', '')
+            if address:
+                self.address_input.setPlainText(address)
+            contact_person = get_attr(self.location, 'contact_person', '')
+            if contact_person:
+                self.contact_input.setText(contact_person)
+            phone = get_attr(self.location, 'phone', '')
+            if phone:
+                self.phone_input.setText(phone)
     
     def validate_input(self) -> tuple[bool, str]:
         """
@@ -198,9 +203,9 @@ class DistributionLocationDialog(QDialog):
         # Normalize reference if provided
         if reference:
             reference_normalized = normalize_reference(reference)
-            
-            # Check for duplicate reference
-            if not self.is_edit_mode or (self.location and reference_normalized != self.location.reference):
+            # Check for duplicate reference (dict/ORM safe)
+            current_reference = get_attr(self.location, 'reference', '') if self.location else ''
+            if not self.is_edit_mode or (self.location and reference_normalized != current_reference):
                 if self.is_reference_duplicate(reference_normalized):
                     return False, f"Reference '{reference_normalized}' already exists. Please use a unique reference."
         
@@ -237,17 +242,25 @@ class DistributionLocationDialog(QDialog):
             pharmacy_id = self.pharmacy_combo.currentData()
             
             if self.is_edit_mode:
-                # Update existing location
-                self.location.name = name
-                self.location.reference = reference.upper() if reference else None
-                if hasattr(self.location, 'trn'):
-                    self.location.trn = trn if trn else None
-                self.location.address = address if address else None
-                self.location.contact_person = contact_person if contact_person else None
-                self.location.phone = phone if phone else None
-                self.location.pharmacy_id = pharmacy_id
+                # Update existing location (handle dict or ORM object)
+                if isinstance(self.location, dict):
+                    self.location['name'] = name
+                    self.location['reference'] = reference.upper() if reference else None
+                    self.location['trn'] = trn if trn else None
+                    self.location['address'] = address if address else None
+                    self.location['contact_person'] = contact_person if contact_person else None
+                    self.location['phone'] = phone if phone else None
+                    self.location['pharmacy_id'] = pharmacy_id
+                else:
+                    self.location.name = name
+                    self.location.reference = reference.upper() if reference else None
+                    if hasattr(self.location, 'trn'):
+                        self.location.trn = trn if trn else None
+                    self.location.address = address if address else None
+                    self.location.contact_person = contact_person if contact_person else None
+                    self.location.phone = phone if phone else None
+                    self.location.pharmacy_id = pharmacy_id
                 self.db_manager.update(self.location)
-                
                 QMessageBox.information(
                     self,
                     "Success",

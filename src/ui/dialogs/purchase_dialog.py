@@ -349,7 +349,8 @@ class PurchaseDialog(QDialog):
                     )
                     return
             else:
-                if invoice_number != self.purchase.invoice_number:
+                current_invoice = get_attr(self.purchase, 'invoice_number', '') if self.purchase else ''
+                if invoice_number != current_invoice:
                     existing = next((p for p in all_purchases if get_attr(p, 'invoice_number') == invoice_number), None)
                     if existing:
                         QMessageBox.warning(
@@ -364,23 +365,32 @@ class PurchaseDialog(QDialog):
             # Calculate total
             total_price = Decimal(str(quantity * unit_price))
             if self.is_edit_mode:
-                # Update existing purchase
-                old_quantity = self.purchase.quantity
+                # Update existing purchase (dict/ORM safe)
+                old_quantity = get_attr(self.purchase, 'quantity', 0)
                 quantity_diff = quantity - old_quantity
-                self.purchase.invoice_number = invoice_number
-                self.purchase.supplier_name = sanitize_input(self.supplier_input.text())
-                self.purchase.purchase_date = purchase_date
-                self.purchase.quantity = quantity
-                self.purchase.remaining_stock = self.purchase.remaining_stock + quantity_diff
-                self.purchase.unit_price = Decimal(str(unit_price))
-                self.purchase.total_price = total_price
+                if isinstance(self.purchase, dict):
+                    self.purchase['invoice_number'] = invoice_number
+                    self.purchase['supplier_name'] = sanitize_input(self.supplier_input.text())
+                    self.purchase['purchase_date'] = purchase_date
+                    self.purchase['quantity'] = quantity
+                    self.purchase['remaining_stock'] = get_attr(self.purchase, 'remaining_stock', 0) + quantity_diff
+                    self.purchase['unit_price'] = Decimal(str(unit_price))
+                    self.purchase['total_price'] = total_price
+                    self.purchase['notes'] = sanitize_input(self.notes_input.toPlainText())
+                    self.purchase['updated_at'] = datetime.now()
+                else:
+                    self.purchase.invoice_number = invoice_number
+                    self.purchase.supplier_name = sanitize_input(self.supplier_input.text())
+                    self.purchase.purchase_date = purchase_date
+                    self.purchase.quantity = quantity
+                    self.purchase.remaining_stock = self.purchase.remaining_stock + quantity_diff
+                    self.purchase.unit_price = Decimal(str(unit_price))
+                    self.purchase.total_price = total_price
                     self.purchase.notes = sanitize_input(self.notes_input.toPlainText())
                     self.purchase.updated_at = datetime.now()
-                    
-                    # Adjust PO remaining stock
-                    po.remaining_stock -= quantity_diff
-                    
-                else:
+                # Adjust PO remaining stock
+                po.remaining_stock -= quantity_diff
+            else:
                     # Create new purchase
                     purchase = Purchase(
                         invoice_number=invoice_number,

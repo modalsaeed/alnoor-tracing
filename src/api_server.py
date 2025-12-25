@@ -151,7 +151,9 @@ def serialize_model(obj):
 
 
 def serialize_list(objects):
-    """Convert list of SQLAlchemy models to list of dictionaries"""
+    """Convert list of SQLAlchemy models to list of dictionaries. Handles None safely."""
+    if objects is None:
+        return []
     return [serialize_model(obj) for obj in objects]
 
 
@@ -815,6 +817,39 @@ def delete_distribution_location(location_id):
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
+@app.route('/distribution_locations/<int:location_id>', methods=['PUT'])
+def update_distribution_location(location_id):
+    """Update existing distribution location"""
+    try:
+        data = request.json
+        with db_manager.get_session() as session:
+            location = session.get(DistributionLocation, location_id)
+            if not location:
+                return jsonify({'error': 'Distribution location not found'}), 404
+
+            # Update fields if present
+            if 'name' in data:
+                location.name = data['name']
+            if 'reference' in data:
+                location.reference = data['reference']
+            if 'trn' in data:
+                location.trn = data['trn']
+            if 'pharmacy_id' in data:
+                location.pharmacy_id = data['pharmacy_id']
+            if 'address' in data:
+                location.address = data['address']
+            if 'contact_person' in data:
+                location.contact_person = data['contact_person']
+            if 'phone' in data:
+                location.phone = data['phone']
+
+            location.updated_at = datetime.utcnow() if hasattr(location, 'updated_at') else location.updated_at
+            session.commit()
+            return jsonify(serialize_model(location)), 200
+    except Exception as e:
+        print(f"ERROR updating distribution location: {e}", file=sys.stderr)
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 # ==================== MEDICAL CENTRE ENDPOINTS ====================
 
@@ -857,6 +892,38 @@ def create_medical_centre():
         return jsonify({'error': str(e)}), 500
 
 
+# ==================== MEDICAL CENTRE UPDATE ENDPOINT ====================
+@app.route('/medical_centres/<int:centre_id>', methods=['PUT'])
+def update_medical_centre(centre_id):
+    """Update existing medical centre"""
+    try:
+        data = request.json
+        with db_manager.get_session() as session:
+            centre = session.get(MedicalCentre, centre_id)
+            if not centre:
+                return jsonify({'error': 'Medical centre not found'}), 404
+
+            # Update fields if present
+            if 'name' in data:
+                centre.name = data['name']
+            if 'reference' in data:
+                centre.reference = data['reference']
+            if 'address' in data:
+                centre.address = data['address']
+            if 'contact_person' in data:
+                centre.contact_person = data['contact_person']
+            if 'phone' in data:
+                centre.phone = data['phone']
+
+            centre.updated_at = datetime.utcnow() if hasattr(centre, 'updated_at') else centre.updated_at
+            session.commit()
+            return jsonify(serialize_model(centre)), 200
+    except Exception as e:
+        print(f"ERROR updating medical centre: {e}", file=sys.stderr)
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/medical_centres/<int:centre_id>', methods=['DELETE'])
 def delete_medical_centre(centre_id):
     """Delete medical centre"""
@@ -887,7 +954,9 @@ def get_patient_coupons():
         log_request('/patient_coupons', f"- Retrieved {len(coupons)} coupons")
         return jsonify(serialize_list(coupons))
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        tb = traceback.format_exc()
+        print(f"\n[SERVER ERROR] /patient_coupons\n{tb}\n", flush=True)
+        return jsonify({'error': str(e), 'traceback': tb}), 500
 
 
 @app.route('/patient_coupons', methods=['POST'])

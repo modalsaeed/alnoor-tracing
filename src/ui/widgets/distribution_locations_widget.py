@@ -391,14 +391,19 @@ class DistributionLocationsWidget(QWidget):
         self.delete_btn.setEnabled(has_selection)
     
     def get_selected_location(self) -> Optional[DistributionLocation]:
-        """Get the currently selected distribution location."""
+        """Get the currently selected distribution location (dict/ORM safe)."""
         selected_rows = self.table.selectedItems()
         if not selected_rows:
             return None
-        
         row = selected_rows[0].row()
         id_item = self.table.item(row, 0)
-        return id_item.data(Qt.ItemDataRole.UserRole)
+        # Always return the ID, not the object itself
+        location_id = id_item.text()
+        # Find the location in self.current_locations by id (works for dict or ORM)
+        for loc in self.current_locations:
+            if str(get_id(loc)) == location_id:
+                return loc
+        return None
     
     def add_location(self):
         """Open dialog to add new distribution location."""
@@ -409,7 +414,7 @@ class DistributionLocationsWidget(QWidget):
             self.load_locations()
     
     def edit_location(self):
-        """Open dialog to edit selected distribution location."""
+        """Open dialog to edit selected distribution location (dict/ORM safe)."""
         location = self.get_selected_location()
         if not location:
             QMessageBox.warning(
@@ -418,15 +423,13 @@ class DistributionLocationsWidget(QWidget):
                 "Please select a distribution location to edit."
             )
             return
-        
         from src.ui.dialogs.distribution_location_dialog import DistributionLocationDialog
-        
         dialog = DistributionLocationDialog(self.db_manager, location=location, parent=self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.load_locations()
     
     def delete_location(self):
-        """Delete selected distribution location."""
+        """Delete selected distribution location (dict/ORM safe)."""
         location = self.get_selected_location()
         if not location:
             QMessageBox.warning(
@@ -435,12 +438,11 @@ class DistributionLocationsWidget(QWidget):
                 "Please select a distribution location to delete."
             )
             return
-        
         # Check if location has associated coupons
         from src.database.models import PatientCoupon
         all_coupons = self.db_manager.get_all(PatientCoupon)
-        coupon_count = sum(1 for c in all_coupons if get_attr(c, 'distribution_location_id') == get_id(location))
-        
+        location_id = get_id(location)
+        coupon_count = sum(1 for c in all_coupons if get_attr(c, 'distribution_location_id') == location_id)
         if coupon_count > 0:
             QMessageBox.warning(
                 self,
@@ -449,7 +451,6 @@ class DistributionLocationsWidget(QWidget):
                 f"Please reassign or delete those coupons first."
             )
             return
-        
         # Confirm deletion
         reply = QMessageBox.question(
             self,
@@ -461,10 +462,9 @@ class DistributionLocationsWidget(QWidget):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
-        
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                self.db_manager.delete(DistributionLocation, get_id(location))
+                self.db_manager.delete(DistributionLocation, location_id)
                 QMessageBox.information(
                     self,
                     "Success",

@@ -119,17 +119,21 @@ class MedicalCentreDialog(QDialog):
         layout.addLayout(button_layout)
     
     def populate_fields(self):
-        """Populate form fields with existing centre data."""
+        """Populate form fields with existing centre data (dict/ORM safe)."""
         if self.centre:
-            self.name_input.setText(self.centre.name)
-            if self.centre.reference:
-                self.reference_input.setText(self.centre.reference)
-            if self.centre.address:
-                self.address_input.setPlainText(self.centre.address)
-            if self.centre.contact_person:
-                self.contact_input.setText(self.centre.contact_person)
-            if self.centre.phone:
-                self.phone_input.setText(self.centre.phone)
+            self.name_input.setText(get_attr(self.centre, 'name', ''))
+            reference = get_attr(self.centre, 'reference', '')
+            if reference:
+                self.reference_input.setText(reference)
+            address = get_attr(self.centre, 'address', '')
+            if address:
+                self.address_input.setPlainText(address)
+            contact_person = get_attr(self.centre, 'contact_person', '')
+            if contact_person:
+                self.contact_input.setText(contact_person)
+            phone = get_attr(self.centre, 'phone', '')
+            if phone:
+                self.phone_input.setText(phone)
     
     def validate_input(self) -> tuple[bool, str]:
         """
@@ -163,9 +167,9 @@ class MedicalCentreDialog(QDialog):
         # Normalize reference if provided
         if reference:
             reference_normalized = normalize_reference(reference)
-            
-            # Check for duplicate reference
-            if not self.is_edit_mode or (self.centre and reference_normalized != self.centre.reference):
+            # Check for duplicate reference (dict/ORM safe)
+            current_reference = get_attr(self.centre, 'reference', '') if self.centre else ''
+            if not self.is_edit_mode or (self.centre and reference_normalized != current_reference):
                 if self.is_reference_duplicate(reference_normalized):
                     return False, f"Reference '{reference_normalized}' already exists. Please use a unique reference."
         
@@ -196,14 +200,20 @@ class MedicalCentreDialog(QDialog):
             phone = self.phone_input.text().strip()
             
             if self.is_edit_mode:
-                # Update existing centre
-                self.centre.name = name
-                self.centre.reference = reference.upper() if reference else None
-                self.centre.address = address if address else None
-                self.centre.contact_person = contact_person if contact_person else None
-                self.centre.phone = phone if phone else None
+                # Update existing centre (dict/ORM safe)
+                if isinstance(self.centre, dict):
+                    self.centre['name'] = name
+                    self.centre['reference'] = reference.upper() if reference else None
+                    self.centre['address'] = address if address else None
+                    self.centre['contact_person'] = contact_person if contact_person else None
+                    self.centre['phone'] = phone if phone else None
+                else:
+                    self.centre.name = name
+                    self.centre.reference = reference.upper() if reference else None
+                    self.centre.address = address if address else None
+                    self.centre.contact_person = contact_person if contact_person else None
+                    self.centre.phone = phone if phone else None
                 self.db_manager.update(self.centre)
-                
                 QMessageBox.information(
                     self,
                     "Success",

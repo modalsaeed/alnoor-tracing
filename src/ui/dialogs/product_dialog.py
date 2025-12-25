@@ -115,14 +115,16 @@ class ProductDialog(QDialog):
         layout.addLayout(button_layout)
     
     def populate_fields(self):
-        """Populate form fields with existing product data."""
+        """Populate form fields with existing product data (dict/ORM safe)."""
         if self.product:
-            self.name_input.setText(self.product.name)
-            self.reference_input.setText(self.product.reference)
-            if self.product.unit:
-                self.unit_input.setText(self.product.unit)
-            if self.product.description:
-                self.description_input.setPlainText(self.product.description)
+            self.name_input.setText(get_attr(self.product, 'name', ''))
+            self.reference_input.setText(get_attr(self.product, 'reference', ''))
+            unit = get_attr(self.product, 'unit', '')
+            if unit:
+                self.unit_input.setText(unit)
+            description = get_attr(self.product, 'description', '')
+            if description:
+                self.description_input.setPlainText(description)
     
     def validate_input(self) -> tuple[bool, str]:
         """
@@ -149,7 +151,8 @@ class ProductDialog(QDialog):
         reference_normalized = normalize_reference(reference)
         
         # Check for duplicate reference (only if creating new or reference changed)
-        if not self.is_edit_mode or (self.product and reference_normalized != self.product.reference):
+        current_reference = get_attr(self.product, 'reference', '') if self.product else ''
+        if not self.is_edit_mode or (self.product and reference_normalized != current_reference):
             if self.is_reference_duplicate(reference_normalized):
                 return False, f"Reference '{reference_normalized}' already exists. Please use a unique reference."
         
@@ -180,13 +183,18 @@ class ProductDialog(QDialog):
             description = sanitize_input(self.description_input.toPlainText())
             
             if self.is_edit_mode:
-                # Update existing product
-                self.product.name = name
-                self.product.reference = reference
-                self.product.unit = unit if unit else None
-                self.product.description = description if description else None
+                # Update existing product (dict/ORM safe)
+                if isinstance(self.product, dict):
+                    self.product['name'] = name
+                    self.product['reference'] = reference
+                    self.product['unit'] = unit if unit else None
+                    self.product['description'] = description if description else None
+                else:
+                    self.product.name = name
+                    self.product.reference = reference
+                    self.product.unit = unit if unit else None
+                    self.product.description = description if description else None
                 self.db_manager.update(self.product)
-                
                 QMessageBox.information(
                     self,
                     "Success",

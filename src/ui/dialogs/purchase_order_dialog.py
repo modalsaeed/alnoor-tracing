@@ -292,38 +292,36 @@ class PurchaseOrderDialog(QDialog):
             pass
     
     def populate_fields(self):
-        """Populate form fields with existing order data."""
+        """Populate form fields with existing order data (dict/ORM safe)."""
         if self.order:
-            self.po_reference_input.setText(self.order.po_reference)
-            
+            self.po_reference_input.setText(get_attr(self.order, 'po_reference', ''))
             # Select the product in combo box
+            product_id = get_attr(self.order, 'product_id', None)
             for i in range(self.product_combo.count()):
-                if self.product_combo.itemData(i) == self.order.product_id:
+                if self.product_combo.itemData(i) == product_id:
                     self.product_combo.setCurrentIndex(i)
                     break
-            
-            self.quantity_input.setValue(self.order.quantity)
-            
-            if self.order.warehouse_location:
-                self.warehouse_input.setText(self.order.warehouse_location)
-            
+            self.quantity_input.setValue(get_attr(self.order, 'quantity', 1))
+            warehouse_location = get_attr(self.order, 'warehouse_location', '')
+            if warehouse_location:
+                self.warehouse_input.setText(warehouse_location)
             # Populate pricing fields if available
-            if self.order.unit_price is not None:
-                self.unit_price_input.setValue(float(self.order.unit_price))
-            
-            if self.order.tax_rate is not None:
-                self.tax_rate_input.setValue(float(self.order.tax_rate))
-            
+            unit_price = get_attr(self.order, 'unit_price', None)
+            if unit_price is not None:
+                self.unit_price_input.setValue(float(unit_price))
+            tax_rate = get_attr(self.order, 'tax_rate', None)
+            if tax_rate is not None:
+                self.tax_rate_input.setValue(float(tax_rate))
             # Calculate totals will auto-populate the calculated fields
             self.calculate_totals()
-            
             # Update stock info
-            used = self.order.quantity - self.order.remaining_stock
+            quantity = get_attr(self.order, 'quantity', 0)
+            remaining_stock = get_attr(self.order, 'remaining_stock', 0)
+            used = quantity - remaining_stock
             self.stock_info_label.setText(
-                f"📊 Stock Status: {self.order.remaining_stock} remaining "
-                f"({used} used, {self.order.quantity} total)"
+                f"\U0001f4ca Stock Status: {remaining_stock} remaining "
+                f"({used} used, {quantity} total)"
             )
-            
             # Disable product and quantity changes if stock has been used
             if used > 0:
                 self.product_combo.setEnabled(False)
@@ -413,36 +411,56 @@ class PurchaseOrderDialog(QDialog):
                     total_with_tax = total_without_tax
             
             if self.is_edit_mode:
-                # Update existing order
-                self.order.po_reference = po_reference
-                self.order.warehouse_location = warehouse if warehouse else None
-                
-                # Update pricing information
-                self.order.unit_price = unit_price
-                self.order.tax_rate = tax_rate
-                self.order.tax_amount = tax_amount
-                self.order.total_without_tax = total_without_tax
-                self.order.total_with_tax = total_with_tax
-                
-                # Only update product and quantity if no stock has been used
-                if self.order.remaining_stock == self.order.quantity:
-                    self.order.product_id = product_id
-                    self.order.quantity = quantity
-                    self.order.remaining_stock = quantity
-                    # Recalculate totals if quantity changed
-                    if unit_price is not None:
-                        total_without_tax = quantity * unit_price
-                        if tax_rate is not None:
-                            tax_amount = total_without_tax * (tax_rate / 100.0)
-                            total_with_tax = total_without_tax + tax_amount
-                        else:
-                            total_with_tax = total_without_tax
-                        self.order.tax_amount = tax_amount
-                        self.order.total_without_tax = total_without_tax
-                        self.order.total_with_tax = total_with_tax
-                
+                # Update existing order (dict/ORM safe)
+                if isinstance(self.order, dict):
+                    self.order['po_reference'] = po_reference
+                    self.order['warehouse_location'] = warehouse if warehouse else None
+                    self.order['unit_price'] = unit_price
+                    self.order['tax_rate'] = tax_rate
+                    self.order['tax_amount'] = tax_amount
+                    self.order['total_without_tax'] = total_without_tax
+                    self.order['total_with_tax'] = total_with_tax
+                    # Only update product and quantity if no stock has been used
+                    if get_attr(self.order, 'remaining_stock', 0) == get_attr(self.order, 'quantity', 0):
+                        self.order['product_id'] = product_id
+                        self.order['quantity'] = quantity
+                        self.order['remaining_stock'] = quantity
+                        # Recalculate totals if quantity changed
+                        if unit_price is not None:
+                            total_without_tax = quantity * unit_price
+                            if tax_rate is not None:
+                                tax_amount = total_without_tax * (tax_rate / 100.0)
+                                total_with_tax = total_without_tax + tax_amount
+                            else:
+                                total_with_tax = total_without_tax
+                            self.order['tax_amount'] = tax_amount
+                            self.order['total_without_tax'] = total_without_tax
+                            self.order['total_with_tax'] = total_with_tax
+                else:
+                    self.order.po_reference = po_reference
+                    self.order.warehouse_location = warehouse if warehouse else None
+                    self.order.unit_price = unit_price
+                    self.order.tax_rate = tax_rate
+                    self.order.tax_amount = tax_amount
+                    self.order.total_without_tax = total_without_tax
+                    self.order.total_with_tax = total_with_tax
+                    # Only update product and quantity if no stock has been used
+                    if self.order.remaining_stock == self.order.quantity:
+                        self.order.product_id = product_id
+                        self.order.quantity = quantity
+                        self.order.remaining_stock = quantity
+                        # Recalculate totals if quantity changed
+                        if unit_price is not None:
+                            total_without_tax = quantity * unit_price
+                            if tax_rate is not None:
+                                tax_amount = total_without_tax * (tax_rate / 100.0)
+                                total_with_tax = total_without_tax + tax_amount
+                            else:
+                                total_with_tax = total_without_tax
+                            self.order.tax_amount = tax_amount
+                            self.order.total_without_tax = total_without_tax
+                            self.order.total_with_tax = total_with_tax
                 self.db_manager.update(self.order)
-                
                 QMessageBox.information(
                     self,
                     "Success",

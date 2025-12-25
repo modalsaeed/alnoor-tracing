@@ -112,28 +112,28 @@ class PharmacyDialog(QDialog):
         self.name_input.setFocus()
     
     def populate_fields(self):
-        """Populate fields with pharmacy data."""
+        """Populate fields with pharmacy data (dict/ORM safe)."""
         if not self.pharmacy:
             return
-        
-        self.name_input.setText(self.pharmacy.name)
-        if self.pharmacy.reference:
-            self.reference_input.setText(self.pharmacy.reference)
-        
-        if self.pharmacy.trn:
-            self.trn_input.setText(self.pharmacy.trn)
-        
-        if self.pharmacy.contact_person:
-            self.contact_person_input.setText(self.pharmacy.contact_person)
-        
-        if self.pharmacy.phone:
-            self.phone_input.setText(self.pharmacy.phone)
-        
-        if self.pharmacy.email:
-            self.email_input.setText(self.pharmacy.email)
-        
-        if self.pharmacy.notes:
-            self.notes_input.setPlainText(self.pharmacy.notes)
+        self.name_input.setText(get_attr(self.pharmacy, 'name', ''))
+        reference = get_attr(self.pharmacy, 'reference', '')
+        if reference:
+            self.reference_input.setText(reference)
+        trn = get_attr(self.pharmacy, 'trn', '')
+        if trn:
+            self.trn_input.setText(trn)
+        contact_person = get_attr(self.pharmacy, 'contact_person', '')
+        if contact_person:
+            self.contact_person_input.setText(contact_person)
+        phone = get_attr(self.pharmacy, 'phone', '')
+        if phone:
+            self.phone_input.setText(phone)
+        email = get_attr(self.pharmacy, 'email', '')
+        if email:
+            self.email_input.setText(email)
+        notes = get_attr(self.pharmacy, 'notes', '')
+        if notes:
+            self.notes_input.setPlainText(notes)
     
     def save_pharmacy(self):
         """Save the pharmacy."""
@@ -169,15 +169,24 @@ class PharmacyDialog(QDialog):
         
         try:
             if self.is_edit_mode:
-                # Update existing pharmacy
-                self.pharmacy.name = name
-                self.pharmacy.reference = reference if reference else None
-                self.pharmacy.trn = trn if trn else None
-                self.pharmacy.contact_person = contact_person if contact_person else None
-                self.pharmacy.phone = phone if phone else None
-                self.pharmacy.email = email if email else None
-                self.pharmacy.notes = notes if notes else None
-                self.db_manager.add(self.pharmacy)
+                # Update existing pharmacy (dict/ORM safe)
+                if isinstance(self.pharmacy, dict):
+                    self.pharmacy['name'] = name
+                    self.pharmacy['reference'] = reference if reference else None
+                    self.pharmacy['trn'] = trn if trn else None
+                    self.pharmacy['contact_person'] = contact_person if contact_person else None
+                    self.pharmacy['phone'] = phone if phone else None
+                    self.pharmacy['email'] = email if email else None
+                    self.pharmacy['notes'] = notes if notes else None
+                else:
+                    self.pharmacy.name = name
+                    self.pharmacy.reference = reference if reference else None
+                    self.pharmacy.trn = trn if trn else None
+                    self.pharmacy.contact_person = contact_person if contact_person else None
+                    self.pharmacy.phone = phone if phone else None
+                    self.pharmacy.email = email if email else None
+                    self.pharmacy.notes = notes if notes else None
+                self.db_manager.update(self.pharmacy)
                 QMessageBox.information(self, "Success", "Pharmacy updated successfully.")
             else:
                 # Check for duplicate name
