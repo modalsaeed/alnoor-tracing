@@ -213,7 +213,7 @@ class AddGRVReferenceDialog(QDialog):
     def search_bundles(self):
         """Search for bundles by verification reference or delivery note number."""
         search_term = self.search_input.text().strip()
-        
+
         if not search_term:
             QMessageBox.warning(
                 self,
@@ -221,123 +221,141 @@ class AddGRVReferenceDialog(QDialog):
                 "Please enter a verification number or delivery note number to search."
             )
             return
-        
+
         try:
-            # Query bundles using partial match on both fields
-            with self.db_manager.get_session() as session:
-                # Get all verified coupons that match the search term
-                coupons = session.query(PatientCoupon).options(
-                    joinedload(PatientCoupon.product),
-                    joinedload(PatientCoupon.medical_centre),
-                    joinedload(PatientCoupon.distribution_location)
-                ).filter(
-                    PatientCoupon.verified == True,
-                    (
-                        (PatientCoupon.verification_reference.ilike(f'%{search_term}%')) |
-                        (PatientCoupon.delivery_note_number.ilike(f'%{search_term}%'))
-                    )
-                ).all()
-                
-                if not coupons:
-                    QMessageBox.information(
-                        self,
-                        "No Results",
-                        f"No verified bundles found matching: {search_term}\n\n"
-                        f"Please check:\n"
-                        f"• The verification number or DN number is correct\n"
-                        f"• The coupons have been verified (confirmed delivered)\n"
-                        f"• The search term matches part of the verification/DN number"
-                    )
-                    self.results_table.setRowCount(0)
-                    self.details_text.clear()
-                    self.save_btn.setEnabled(False)
-                    return
-                
-                # Group coupons by verification_reference + delivery_note_number combination
-                bundles_dict = {}
-                for coupon in coupons:
-                    # Use both verification ref and DN as key for uniqueness
-                    key = (coupon.verification_reference or "N/A", coupon.delivery_note_number or "N/A")
-                    if key not in bundles_dict:
-                        bundles_dict[key] = []
-                    bundles_dict[key].append(coupon)
-                
-                # Convert to list of bundle data
-                self.bundles_data = []
-                for (ver_ref, dn_num), coupons_list in bundles_dict.items():
-                    # Get health centre name from first coupon
-                    health_centre = "Unknown"
-                    if coupons_list[0].medical_centre:
-                        health_centre = coupons_list[0].medical_centre.name
-                    
-                    # Get DN date from first coupon (if available)
-                    dn_date = "N/A"
-                    if coupons_list[0].date_verified:
-                        dn_date = coupons_list[0].date_verified.strftime("%Y-%m-%d")
-                    
-                    # Calculate totals
-                    total_pieces = sum(c.quantity_pieces for c in coupons_list)
-                    
-                    # Get GRV reference (should be same for all in bundle)
-                    grv_ref = coupons_list[0].grv_reference or "Not Set"
-                    
-                    self.bundles_data.append({
-                        'verification_ref': ver_ref,
-                        'dn_number': dn_num,
-                        'health_centre': health_centre,
-                        'coupon_count': len(coupons_list),
-                        'total_pieces': total_pieces,
-                        'grv_ref': grv_ref,
-                        'dn_date': dn_date,
-                        'coupons': coupons_list
-                    })
-                
-                # Sort bundles by verification ref
-                self.bundles_data.sort(key=lambda x: x['verification_ref'])
-                
-                # Populate results table
-                self.results_table.setRowCount(len(self.bundles_data))
-                
-                for row, bundle in enumerate(self.bundles_data):
-                    # Verification Reference
-                    self.results_table.setItem(row, 0, QTableWidgetItem(bundle['verification_ref']))
-                    
-                    # DN Number
-                    self.results_table.setItem(row, 1, QTableWidgetItem(bundle['dn_number']))
-                    
-                    # Health Centre
-                    self.results_table.setItem(row, 2, QTableWidgetItem(bundle['health_centre']))
-                    
-                    # Total Coupons
-                    count_item = QTableWidgetItem(str(bundle['coupon_count']))
-                    count_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    self.results_table.setItem(row, 3, count_item)
-                    
-                    # Total Pieces
-                    pieces_item = QTableWidgetItem(str(bundle['total_pieces']))
-                    pieces_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    self.results_table.setItem(row, 4, pieces_item)
-                    
-                    # Current GRV
-                    grv_item = QTableWidgetItem(bundle['grv_ref'])
-                    if bundle['grv_ref'] != "Not Set":
-                        grv_item.setBackground(QColor("#d4edda"))
-                        grv_item.setForeground(QColor("#155724"))
-                    else:
-                        grv_item.setBackground(QColor("#fff3cd"))
-                        grv_item.setForeground(QColor("#856404"))
-                    self.results_table.setItem(row, 5, grv_item)
-                    
-                    # DN Date
-                    self.results_table.setItem(row, 6, QTableWidgetItem(bundle['dn_date']))
-                
+            # API mode: use get_all_patient_coupons and filter in Python
+            if hasattr(self.db_manager, 'server_url'):
+                coupons = self.db_manager.get_all_patient_coupons()
+                # Only verified coupons, partial match on verification_reference or delivery_note_number
+                coupons = [c for c in coupons if get_attr(c, 'verified', False) and (
+                    (search_term.lower() in (get_attr(c, 'verification_reference', '') or '').lower()) or
+                    (search_term.lower() in (get_attr(c, 'delivery_note_number', '') or '').lower())
+                )]
+            else:
+                # Local DB mode: use session.query
+                with self.db_manager.get_session() as session:
+                    coupons = session.query(PatientCoupon).options(
+                        joinedload(PatientCoupon.product),
+                        joinedload(PatientCoupon.medical_centre),
+                        joinedload(PatientCoupon.distribution_location)
+                    ).filter(
+                        PatientCoupon.verified == True,
+                        (
+                            (PatientCoupon.verification_reference.ilike(f'%{search_term}%')) |
+                            (PatientCoupon.delivery_note_number.ilike(f'%{search_term}%'))
+                        )
+                    ).all()
+
+            if not coupons:
                 QMessageBox.information(
                     self,
-                    "Search Complete",
-                    f"✅ Found {len(self.bundles_data)} bundle(s) matching: {search_term}\n\n"
-                    f"Select a bundle from the table to view details and add GRV reference."
+                    "No Results",
+                    f"No verified bundles found matching: {search_term}\n\n"
+                    f"Please check:\n"
+                    f"• The verification number or DN number is correct\n"
+                    f"• The coupons have been verified (confirmed delivered)\n"
+                    f"• The search term matches part of the verification/DN number"
                 )
-                
+                self.results_table.setRowCount(0)
+                self.details_text.clear()
+                self.save_btn.setEnabled(False)
+                return
+
+            # Group coupons by verification_reference + delivery_note_number combination
+            bundles_dict = {}
+            for coupon in coupons:
+                ver_ref = get_attr(coupon, 'verification_reference', None) or "N/A"
+                dn_num = get_attr(coupon, 'delivery_note_number', None) or "N/A"
+                key = (ver_ref, dn_num)
+                if key not in bundles_dict:
+                    bundles_dict[key] = []
+                bundles_dict[key].append(coupon)
+
+            # Convert to list of bundle data
+            self.bundles_data = []
+            for (ver_ref, dn_num), coupons_list in bundles_dict.items():
+                # Get health centre name from first coupon
+                health_centre = "Unknown"
+                first_c = coupons_list[0]
+                centre = get_attr(first_c, 'medical_centre', None)
+                if centre:
+                    health_centre = get_attr(centre, 'name', 'Unknown')
+
+                # Get DN date from first coupon (if available)
+                dn_date = "N/A"
+                date_verified = get_attr(first_c, 'date_verified', None)
+                if date_verified:
+                    if isinstance(date_verified, str):
+                        dn_date = date_verified[:10]
+                    else:
+                        try:
+                            dn_date = date_verified.strftime("%Y-%m-%d")
+                        except Exception:
+                            pass
+
+                # Calculate totals
+                total_pieces = sum(get_attr(c, 'quantity_pieces', 0) for c in coupons_list)
+
+                # Get GRV reference (should be same for all in bundle)
+                grv_ref = get_attr(first_c, 'grv_reference', None) or "Not Set"
+
+                self.bundles_data.append({
+                    'verification_ref': ver_ref,
+                    'dn_number': dn_num,
+                    'health_centre': health_centre,
+                    'coupon_count': len(coupons_list),
+                    'total_pieces': total_pieces,
+                    'grv_ref': grv_ref,
+                    'dn_date': dn_date,
+                    'coupons': coupons_list
+                })
+
+            # Sort bundles by verification ref
+            self.bundles_data.sort(key=lambda x: x['verification_ref'])
+
+            # Populate results table
+            self.results_table.setRowCount(len(self.bundles_data))
+
+            for row, bundle in enumerate(self.bundles_data):
+                # Verification Reference
+                self.results_table.setItem(row, 0, QTableWidgetItem(bundle['verification_ref']))
+
+                # DN Number
+                self.results_table.setItem(row, 1, QTableWidgetItem(bundle['dn_number']))
+
+                # Health Centre
+                self.results_table.setItem(row, 2, QTableWidgetItem(bundle['health_centre']))
+
+                # Total Coupons
+                count_item = QTableWidgetItem(str(bundle['coupon_count']))
+                count_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.results_table.setItem(row, 3, count_item)
+
+                # Total Pieces
+                pieces_item = QTableWidgetItem(str(bundle['total_pieces']))
+                pieces_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.results_table.setItem(row, 4, pieces_item)
+
+                # Current GRV
+                grv_item = QTableWidgetItem(bundle['grv_ref'])
+                if bundle['grv_ref'] != "Not Set":
+                    grv_item.setBackground(QColor("#d4edda"))
+                    grv_item.setForeground(QColor("#155724"))
+                else:
+                    grv_item.setBackground(QColor("#fff3cd"))
+                    grv_item.setForeground(QColor("#856404"))
+                self.results_table.setItem(row, 5, grv_item)
+
+                # DN Date
+                self.results_table.setItem(row, 6, QTableWidgetItem(bundle['dn_date']))
+
+            QMessageBox.information(
+                self,
+                "Search Complete",
+                f"✅ Found {len(self.bundles_data)} bundle(s) matching: {search_term}\n\n"
+                f"Select a bundle from the table to view details and add GRV reference."
+            )
+
         except Exception as e:
             QMessageBox.critical(
                 self,
@@ -385,9 +403,12 @@ class AddGRVReferenceDialog(QDialog):
         details.append(f"───────────────────────────────────────────────────")
         
         for i, coupon in enumerate(bundle['coupons'], 1):
-            patient = coupon.patient_name or "N/A"
-            product = coupon.product.name if coupon.product else "Unknown"
-            qty = coupon.quantity_pieces
+            patient = get_attr(coupon, 'patient_name', None) or "N/A"
+            product = "Unknown"
+            prod_obj = get_attr(coupon, 'product', None)
+            if prod_obj:
+                product = get_attr(prod_obj, 'name', 'Unknown')
+            qty = get_attr(coupon, 'quantity_pieces', 0)
             details.append(f"{i}. {patient} - {product} ({qty} pcs)")
         
         self.details_text.setText("\n".join(details))
@@ -416,29 +437,34 @@ class AddGRVReferenceDialog(QDialog):
             return
         
         try:
-            # Update all coupons in the bundle
-            with self.db_manager.get_session() as session:
-                updated_count = 0
-                
+            updated_count = 0
+            if hasattr(self.db_manager, 'server_url'):
+                # API mode: update each coupon via db_manager.update(record)
                 for coupon in self.selected_bundle:
-                    # Get coupon from session
-                    db_coupon = session.query(PatientCoupon).get(coupon.id)
-                    if db_coupon:
-                        db_coupon.grv_reference = grv_ref
-                        updated_count += 1
-                
-                # Commit happens automatically on context manager exit
-            
+                    record = dict(coupon) if isinstance(coupon, dict) else {k: v for k, v in coupon.__dict__.items() if not k.startswith('_')}
+                    record['grv_reference'] = grv_ref
+                    self.db_manager.update(record)
+                    updated_count += 1
+            else:
+                # Local DB mode: use session
+                with self.db_manager.get_session() as session:
+                    for coupon in self.selected_bundle:
+                        db_coupon = session.query(PatientCoupon).get(get_id(coupon))
+                        if db_coupon:
+                            db_coupon.grv_reference = grv_ref
+                            updated_count += 1
+                    # Commit happens automatically on context manager exit
+
             QMessageBox.information(
                 self,
                 "Success",
                 f"✅ GRV reference '{grv_ref}' has been successfully added to {updated_count} coupon(s) in the bundle.\n\n"
-                f"Verification Reference: {self.selected_bundle[0].verification_reference}\n"
-                f"Delivery Note: {self.selected_bundle[0].delivery_note_number}"
+                f"Verification Reference: {get_attr(self.selected_bundle[0], 'verification_reference', '')}\n"
+                f"Delivery Note: {get_attr(self.selected_bundle[0], 'delivery_note_number', '')}"
             )
-            
+
             self.accept()
-            
+
         except Exception as e:
             QMessageBox.critical(
                 self,

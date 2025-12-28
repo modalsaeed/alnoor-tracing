@@ -115,6 +115,32 @@ class DashboardWidget(QWidget):
         layout.addLayout(metrics_row2)
         layout.addSpacing(30)
         
+        # Quick actions section (moved above stock alerts)
+        actions_section = QLabel("⚡ Quick Actions")
+        actions_section.setStyleSheet(f"""
+            font-size: {Fonts.SIZE_LARGE}px;
+            font-weight: {Fonts.WEIGHT_BOLD};
+            color: {Colors.TEXT_PRIMARY};
+        """)
+        layout.addWidget(actions_section)
+
+        actions_layout = QHBoxLayout()
+
+        # Quick action buttons
+        add_product_btn = self.create_action_button(f"{IconStyles.ADD} Add Product", get_card_color('products'))
+        add_po_btn = self.create_action_button(f"{IconStyles.PRODUCT} Add Purchase Order", get_card_color('pos'))
+        add_coupon_btn = self.create_action_button(f"{IconStyles.COUPON} Add Coupon", get_card_color('coupons'))
+        view_reports_btn = self.create_action_button(f"{IconStyles.DASHBOARD} View Reports", Colors.INFO)
+
+        actions_layout.addWidget(add_product_btn)
+        actions_layout.addWidget(add_po_btn)
+        actions_layout.addWidget(add_coupon_btn)
+        actions_layout.addWidget(view_reports_btn)
+        actions_layout.addStretch()
+
+        layout.addLayout(actions_layout)
+        layout.addSpacing(30)
+
         # Stock alerts section
         stock_section = QLabel(f"{IconStyles.WARNING} Stock Alerts")
         stock_section.setStyleSheet(f"""
@@ -123,18 +149,18 @@ class DashboardWidget(QWidget):
             color: {Colors.TEXT_PRIMARY};
         """)
         layout.addWidget(stock_section)
-        
+
         self.stock_alerts_frame = QFrame()
         self.stock_alerts_frame.setStyleSheet(StyleSheets.alert_box('warning'))
         self.stock_alerts_layout = QVBoxLayout(self.stock_alerts_frame)
-        
+
         self.stock_alerts_label = QLabel("Checking stock levels...")
         self.stock_alerts_label.setWordWrap(True)
         self.stock_alerts_layout.addWidget(self.stock_alerts_label)
-        
+
         layout.addWidget(self.stock_alerts_frame)
         layout.addSpacing(30)
-        
+
         # Recent activity section
         activity_section = QLabel("📅 Recent Activity (Last 7 Days)")
         activity_section.setStyleSheet(f"""
@@ -143,14 +169,14 @@ class DashboardWidget(QWidget):
             color: {Colors.TEXT_PRIMARY};
         """)
         layout.addWidget(activity_section)
-        
+
         # Recent coupons table
         self.recent_table = QTableWidget()
         self.recent_table.setColumnCount(7)
         self.recent_table.setHorizontalHeaderLabels([
             "Date", "Patient", "CPR", "Product", "Quantity", "Status", "Verification"
         ])
-        
+
         # Configure table
         header = self.recent_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
@@ -160,44 +186,19 @@ class DashboardWidget(QWidget):
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
-        
+
         self.recent_table.setAlternatingRowColors(True)
         self.recent_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.recent_table.setMaximumHeight(300)
         self.recent_table.setStyleSheet(StyleSheets.table())
-        
+
         layout.addWidget(self.recent_table)
         layout.addSpacing(30)
-        
-        # Quick actions section
-        actions_section = QLabel("⚡ Quick Actions")
-        actions_section.setStyleSheet(f"""
-            font-size: {Fonts.SIZE_LARGE}px;
-            font-weight: {Fonts.WEIGHT_BOLD};
-            color: {Colors.TEXT_PRIMARY};
-        """)
-        layout.addWidget(actions_section)
-        
-        actions_layout = QHBoxLayout()
-        
-        # Quick action buttons
-        add_product_btn = self.create_action_button(f"{IconStyles.ADD} Add Product", get_card_color('products'))
-        add_po_btn = self.create_action_button(f"{IconStyles.PRODUCT} Add Purchase Order", get_card_color('pos'))
-        add_coupon_btn = self.create_action_button(f"{IconStyles.COUPON} Add Coupon", get_card_color('coupons'))
-        view_reports_btn = self.create_action_button(f"{IconStyles.DASHBOARD} View Reports", Colors.INFO)
-        
-        actions_layout.addWidget(add_product_btn)
-        actions_layout.addWidget(add_po_btn)
-        actions_layout.addWidget(add_coupon_btn)
-        actions_layout.addWidget(view_reports_btn)
-        actions_layout.addStretch()
-        
-        layout.addLayout(actions_layout)
-        
+
         layout.addStretch()
-        
+
         scroll.setWidget(main_widget)
-        
+
         # Main layout
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -249,8 +250,9 @@ class DashboardWidget(QWidget):
         btn = QPushButton(text)
         btn.setMinimumHeight(Sizes.BUTTON_HEIGHT_NORMAL)
         btn.setStyleSheet(StyleSheets.button_primary(color))
-        
-        # Connect to navigation (to be implemented)
+
+        # Update tab indices to match new tab order:
+        # 0: Dashboard, 1: Purchase Orders, 2: Products, 3: Distribution Locations, 4: Medical Centres, 5: Coupons, 6: Reports
         if "Product" in text:
             btn.clicked.connect(lambda: self.navigate_to_tab(2))  # Products tab
         elif "Purchase Order" in text:
@@ -259,7 +261,7 @@ class DashboardWidget(QWidget):
             btn.clicked.connect(lambda: self.navigate_to_tab(5))  # Coupons tab
         elif "Reports" in text:
             btn.clicked.connect(lambda: self.navigate_to_tab(6))  # Reports tab
-        
+
         return btn
     
     def navigate_to_tab(self, tab_index: int):
@@ -283,7 +285,7 @@ class DashboardWidget(QWidget):
             pos_count = len(self.db_manager.get_all(PurchaseOrder))
             coupons = self.db_manager.get_all(PatientCoupon)
             coupons_count = len(coupons)
-            verified_count = sum(1 for c in coupons if c.verified)
+            verified_count = sum(1 for c in coupons if get_attr(c, 'verified', False))
             pending_count = coupons_count - verified_count
             centres_count = len(self.db_manager.get_all(MedicalCentre))
             locations_count = len(self.db_manager.get_all(DistributionLocation))
@@ -314,10 +316,32 @@ class DashboardWidget(QWidget):
                 item = self.stock_alerts_layout.takeAt(0)
                 if item.widget():
                     item.widget().deleteLater()
-            
-            # Get low stock products (default 20% threshold)
-            low_stock_products = self.stock_service.get_low_stock_products(threshold_percentage=20.0)
-            
+
+            # Get all products and purchase orders
+            products = self.db_manager.get_all(Product)
+            purchase_orders = self.db_manager.get_all(PurchaseOrder)
+            from src.utils.model_helpers import get_attr, get_name
+
+            # Calculate stock for each product
+            low_stock_products = []
+            threshold_percentage = 20.0
+            for product in products:
+                product_id = get_attr(product, 'id')
+                product_name = get_name(product)
+                # Get all POs for this product
+                pos = [po for po in purchase_orders if get_attr(po, 'product_id') == product_id]
+                total_ordered = sum(get_attr(po, 'quantity', 0) for po in pos)
+                total_remaining = sum(get_attr(po, 'remaining_stock', 0) for po in pos)
+                usage_percentage = ((total_ordered - total_remaining) / total_ordered * 100) if total_ordered else 0
+                remaining_pct = 100 - usage_percentage
+                if total_ordered > 0 and remaining_pct <= threshold_percentage:
+                    low_stock_products.append({
+                        'product_name': product_name,
+                        'total_remaining': total_remaining,
+                        'total_ordered': total_ordered,
+                        'usage_percentage': usage_percentage
+                    })
+
             if not low_stock_products:
                 no_alerts = QLabel(f"{IconStyles.VERIFIED} All products have sufficient stock levels!")
                 no_alerts.setStyleSheet(f"""
@@ -325,7 +349,6 @@ class DashboardWidget(QWidget):
                     font-weight: {Fonts.WEIGHT_BOLD};
                 """)
                 self.stock_alerts_layout.addWidget(no_alerts)
-                
                 self.stock_alerts_frame.setStyleSheet(StyleSheets.alert_box('success'))
             else:
                 alert_header = QLabel(f"{IconStyles.WARNING} {len(low_stock_products)} product(s) need attention:")
@@ -335,14 +358,13 @@ class DashboardWidget(QWidget):
                     margin-bottom: {Spacing.NORMAL}px;
                 """)
                 self.stock_alerts_layout.addWidget(alert_header)
-                
+
                 for item in low_stock_products:
                     product_name = item['product_name']
                     current = item['total_remaining']
                     total = item['total_ordered']
-                    percentage = item['usage_percentage']
-                    remaining_pct = 100 - percentage
-                    
+                    remaining_pct = 100 - item['usage_percentage']
+
                     alert_text = f"• {product_name}: {current} / {total} pieces ({remaining_pct:.1f}% remaining)"
                     alert_label = QLabel(alert_text)
                     alert_label.setStyleSheet(f"""
@@ -350,9 +372,9 @@ class DashboardWidget(QWidget):
                         padding: {Spacing.TINY}px 0;
                     """)
                     self.stock_alerts_layout.addWidget(alert_label)
-                
+
                 self.stock_alerts_frame.setStyleSheet(StyleSheets.alert_box('warning'))
-                
+
         except Exception as e:
             error_label = QLabel(f"{IconStyles.ERROR} Error loading stock alerts: {str(e)}")
             error_label.setStyleSheet(f"color: {Colors.ERROR};")
@@ -366,11 +388,22 @@ class DashboardWidget(QWidget):
             all_coupons = self.db_manager.get_all(PatientCoupon)
             
             # Filter by date and sort by newest first
+            def get_created_at_dt(c):
+                val = get_attr(c, 'created_at', None)
+                if isinstance(val, str):
+                    try:
+                        return datetime.fromisoformat(val)
+                    except Exception:
+                        return datetime.min
+                elif isinstance(val, datetime):
+                    return val
+                return datetime.min
+
             recent_coupons = [
-                c for c in all_coupons 
-                if c.created_at >= seven_days_ago
+                c for c in all_coupons
+                if get_created_at_dt(c) >= seven_days_ago
             ]
-            recent_coupons.sort(key=lambda c: c.created_at, reverse=True)
+            recent_coupons.sort(key=get_created_at_dt, reverse=True)
             
             # Limit to 20 most recent
             recent_coupons = recent_coupons[:20]
@@ -390,40 +423,45 @@ class DashboardWidget(QWidget):
             for coupon in recent_coupons:
                 row = self.recent_table.rowCount()
                 self.recent_table.insertRow(row)
-                
                 # Date
-                date_str = coupon.created_at.strftime("%Y-%m-%d %H:%M")
+                created_at = get_attr(coupon, 'created_at', None)
+                if created_at:
+                    if isinstance(created_at, str):
+                        try:
+                            created_at_dt = datetime.fromisoformat(created_at)
+                        except Exception:
+                            created_at_dt = datetime.min
+                    else:
+                        created_at_dt = created_at
+                    date_str = created_at_dt.strftime("%Y-%m-%d %H:%M")
+                else:
+                    date_str = "-"
                 self.recent_table.setItem(row, 0, QTableWidgetItem(date_str))
-                
                 # Patient
                 self.recent_table.setItem(row, 1, QTableWidgetItem(get_attr(coupon, 'patient_name', '')))
-                
                 # CPR
                 self.recent_table.setItem(row, 2, QTableWidgetItem(get_attr(coupon, 'cpr', '')))
-                
                 # Product
                 product_name = get_nested_attr(coupon, 'product.name', 'Unknown')
                 self.recent_table.setItem(row, 3, QTableWidgetItem(product_name))
-                
                 # Quantity
                 quantity_item = QTableWidgetItem(f"{get_attr(coupon, 'quantity_pieces', 0)} pcs")
                 quantity_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.recent_table.setItem(row, 4, quantity_item)
-                
                 # Status
-                status_text = f"{IconStyles.VERIFIED} Verified" if coupon.verified else f"{IconStyles.PENDING} Pending"
+                verified = get_attr(coupon, 'verified', False)
+                status_text = f"{IconStyles.VERIFIED} Verified" if verified else f"{IconStyles.PENDING} Pending"
                 status_item = QTableWidgetItem(status_text)
                 status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                if coupon.verified:
+                if verified:
                     status_item.setBackground(QColor(Colors.ALERT_SUCCESS_BG))
                     status_item.setForeground(QColor(Colors.SUCCESS))
                 else:
                     status_item.setBackground(QColor(Colors.ALERT_WARNING_BG))
                     status_item.setForeground(QColor(Colors.WARNING))
                 self.recent_table.setItem(row, 5, status_item)
-                
                 # Verification
-                ver_ref = coupon.verification_reference if coupon.verified else "-"
+                ver_ref = get_attr(coupon, 'verification_reference', '-') if verified else "-"
                 self.recent_table.setItem(row, 6, QTableWidgetItem(ver_ref))
                 
         except Exception as e:

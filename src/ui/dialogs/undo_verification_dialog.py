@@ -196,7 +196,25 @@ class UndoVerificationDialog(QDialog):
                 date_filter = datetime.now() - timedelta(days=self.current_days_filter)
             # Use db_manager.get_all and helpers for compatibility
             all_coupons = self.db_manager.get_all(PatientCoupon)
-            coupons = [c for c in all_coupons if get_attr(c, 'verified') == True and get_attr(c, 'verification_reference') is not None and (not date_filter or (get_attr(c, 'date_verified') and get_attr(c, 'date_verified') >= date_filter))]
+            def is_recent_verified(c):
+                if get_attr(c, 'verified') != True:
+                    return False
+                if get_attr(c, 'verification_reference') is None:
+                    return False
+                if not date_filter:
+                    return True
+                date_val = get_attr(c, 'date_verified')
+                import datetime as dt
+                if isinstance(date_val, dt.datetime):
+                    return date_val >= date_filter
+                elif isinstance(date_val, str):
+                    try:
+                        parsed = dt.datetime.fromisoformat(date_val)
+                        return parsed >= date_filter
+                    except Exception:
+                        return False
+                return False
+            coupons = [c for c in all_coupons if is_recent_verified(c)]
             coupons = sorted(coupons, key=lambda c: get_attr(c, 'date_verified') or datetime.min, reverse=True)
             
             if not coupons:
@@ -207,101 +225,106 @@ class UndoVerificationDialog(QDialog):
                 self.verifications_table.setSpan(0, 0, 1, 8)
                 self.bundles_data = []
                 return
-                
-                # Group by verification reference and DN number
-                bundles_dict = {}
-                for coupon in coupons:
-                    key = (
-                        coupon.verification_reference or "N/A",
-                        coupon.delivery_note_number or "N/A"
-                    )
-                    if key not in bundles_dict:
-                        bundles_dict[key] = []
-                    bundles_dict[key].append(coupon)
-                
-                # Convert to list
-                self.bundles_data = []
-                for (ver_ref, dn_num), coupons_list in bundles_dict.items():
-                    # Get latest verification date
-                    verified_dates = [c.date_verified for c in coupons_list if c.date_verified]
-                    verified_date = max(verified_dates) if verified_dates else datetime.now()
-                    
-                    # Get health centre from first coupon
-                    health_centre = "Unknown"
-                    if coupons_list[0].medical_centre:
-                        health_centre = coupons_list[0].medical_centre.name
-                    
-                    # Get GRV
-                    grv_ref = coupons_list[0].grv_reference or "-"
-                    
-                    # Calculate totals
-                    total_pieces = sum(c.quantity_pieces for c in coupons_list)
-                    
-                    self.bundles_data.append({
-                        'verification_ref': ver_ref,
-                        'dn_number': dn_num,
-                        'health_centre': health_centre,
-                        'verified_date': verified_date,
-                        'coupon_count': len(coupons_list),
-                        'total_pieces': total_pieces,
-                        'grv_ref': grv_ref,
-                        'coupons': coupons_list
-                    })
-                
-                # Sort by verification date (newest first)
-                self.bundles_data.sort(key=lambda x: x['verified_date'], reverse=True)
-                
-                # Populate table
-                self.verifications_table.setRowCount(len(self.bundles_data))
-                
-                for row, bundle in enumerate(self.bundles_data):
-                    # Verification Reference
-                    self.verifications_table.setItem(row, 0, QTableWidgetItem(bundle['verification_ref']))
-                    
-                    # DN Number
-                    self.verifications_table.setItem(row, 1, QTableWidgetItem(bundle['dn_number']))
-                    
-                    # Health Centre
-                    self.verifications_table.setItem(row, 2, QTableWidgetItem(bundle['health_centre']))
-                    
-                    # Verified Date
-                    date_str = bundle['verified_date'].strftime('%Y-%m-%d %H:%M')
-                    self.verifications_table.setItem(row, 3, QTableWidgetItem(date_str))
-                    
-                    # Coupons Count
-                    count_item = QTableWidgetItem(str(bundle['coupon_count']))
-                    count_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    self.verifications_table.setItem(row, 4, count_item)
-                    
-                    # Total Pieces
-                    pieces_item = QTableWidgetItem(str(bundle['total_pieces']))
-                    pieces_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    self.verifications_table.setItem(row, 5, pieces_item)
-                    
-                    # GRV
-                    grv_item = QTableWidgetItem(bundle['grv_ref'])
-                    if bundle['grv_ref'] != "-":
-                        grv_item.setBackground(QColor("#d4edda"))
-                        grv_item.setForeground(QColor("#155724"))
-                    self.verifications_table.setItem(row, 6, grv_item)
-                    
-                    # Undo button
-                    undo_btn = QPushButton("⏮️ Undo")
-                    undo_btn.setStyleSheet("""
-                        QPushButton {
-                            background-color: #dc3545;
-                            color: white;
-                            padding: 5px 15px;
-                            border: none;
-                            border-radius: 3px;
-                            font-weight: bold;
-                        }
-                        QPushButton:hover {
-                            background-color: #c82333;
-                        }
-                    """)
-                    undo_btn.clicked.connect(lambda checked, b=bundle: self.undo_verification(b))
-                    self.verifications_table.setCellWidget(row, 7, undo_btn)
+
+            # Group by verification reference and DN number
+            bundles_dict = {}
+            for coupon in coupons:
+                ver_ref = get_attr(coupon, 'verification_reference', 'N/A')
+                dn_num = get_attr(coupon, 'delivery_note_number', 'N/A')
+                key = (ver_ref, dn_num)
+                if key not in bundles_dict:
+                    bundles_dict[key] = []
+                bundles_dict[key].append(coupon)
+
+            # Convert to list
+            self.bundles_data = []
+            import datetime as dt
+            def parse_dt(val):
+                if isinstance(val, dt.datetime):
+                    return val
+                elif isinstance(val, str):
+                    try:
+                        return dt.datetime.fromisoformat(val)
+                    except Exception:
+                        return dt.datetime.min
+                return dt.datetime.min
+            for (ver_ref, dn_num), coupons_list in bundles_dict.items():
+                # Get latest verification date
+                verified_dates = [get_attr(c, 'date_verified') for c in coupons_list if get_attr(c, 'date_verified')]
+                verified_date = max([parse_dt(d) for d in verified_dates]) if verified_dates else datetime.now()
+
+                # Get health centre from first coupon
+                health_centre = 'Unknown'
+                first_centre = get_attr(coupons_list[0], 'medical_centre', None)
+                if first_centre and hasattr(first_centre, 'name'):
+                    health_centre = get_attr(first_centre, 'name', 'Unknown')
+                elif isinstance(coupons_list[0], dict):
+                    centre_id = get_attr(coupons_list[0], 'medical_centre_id', None)
+                    health_centre = str(centre_id) if centre_id else 'Unknown'
+
+                # Get GRV
+                grv_ref = get_attr(coupons_list[0], 'grv_reference', '-')
+
+                # Calculate totals
+                total_pieces = sum(get_attr(c, 'quantity_pieces', 0) for c in coupons_list)
+
+                self.bundles_data.append({
+                    'verification_ref': ver_ref,
+                    'dn_number': dn_num,
+                    'health_centre': health_centre,
+                    'verified_date': verified_date,
+                    'coupon_count': len(coupons_list),
+                    'total_pieces': total_pieces,
+                    'grv_ref': grv_ref,
+                    'coupons': coupons_list
+                })
+
+            # Sort by verification date (newest first)
+            self.bundles_data.sort(key=lambda x: x['verified_date'], reverse=True)
+
+            # Populate table
+            self.verifications_table.setRowCount(len(self.bundles_data))
+            for row, bundle in enumerate(self.bundles_data):
+                # Verification Reference
+                self.verifications_table.setItem(row, 0, QTableWidgetItem(bundle['verification_ref']))
+                # DN Number
+                self.verifications_table.setItem(row, 1, QTableWidgetItem(bundle['dn_number']))
+                # Health Centre
+                self.verifications_table.setItem(row, 2, QTableWidgetItem(bundle['health_centre']))
+                # Verified Date
+                date_str = bundle['verified_date'].strftime('%Y-%m-%d %H:%M')
+                self.verifications_table.setItem(row, 3, QTableWidgetItem(date_str))
+                # Coupons Count
+                count_item = QTableWidgetItem(str(bundle['coupon_count']))
+                count_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.verifications_table.setItem(row, 4, count_item)
+                # Total Pieces
+                pieces_item = QTableWidgetItem(str(bundle['total_pieces']))
+                pieces_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.verifications_table.setItem(row, 5, pieces_item)
+                # GRV
+                grv_item = QTableWidgetItem(bundle['grv_ref'])
+                if bundle['grv_ref'] != "-":
+                    grv_item.setBackground(QColor("#d4edda"))
+                    grv_item.setForeground(QColor("#155724"))
+                self.verifications_table.setItem(row, 6, grv_item)
+                # Undo button
+                undo_btn = QPushButton("⏮️ Undo")
+                undo_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #dc3545;
+                        color: white;
+                        padding: 5px 15px;
+                        border: none;
+                        border-radius: 3px;
+                        font-weight: bold;
+                    }
+                    QPushButton:hover {
+                        background-color: #c82333;
+                    }
+                """)
+                undo_btn.clicked.connect(lambda checked, b=bundle: self.undo_verification(b))
+                self.verifications_table.setCellWidget(row, 7, undo_btn)
                 
         except Exception as e:
             QMessageBox.critical(
@@ -333,33 +356,42 @@ class UndoVerificationDialog(QDialog):
         
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                with self.db_manager.get_session() as session:
-                    updated_count = 0
-                    
-                    for coupon in bundle['coupons']:
-                        # Get coupon from session
-                        db_coupon = session.query(PatientCoupon).get(coupon.id)
-                        if db_coupon:
-                            # Revert verification
-                            db_coupon.verified = False
-                            db_coupon.verification_reference = None
-                            db_coupon.delivery_note_number = None
-                            db_coupon.date_verified = None
-                            db_coupon.grv_reference = None
-                            updated_count += 1
-                    
-                    # Commit happens automatically
-                
+                updated_count = 0
+                from src.database.models import PatientCoupon
+                for coupon in bundle['coupons']:
+                    # Use correct update signature for local mode
+                    if hasattr(self.db_manager, 'server_url'):
+                        # API mode: pass dict
+                        coupon_dict = dict(coupon) if isinstance(coupon, dict) else {
+                            k: v for k, v in coupon.__dict__.items() if not k.startswith('_')
+                        }
+                        coupon_dict['verified'] = False
+                        coupon_dict['verification_reference'] = None
+                        coupon_dict['delivery_note_number'] = None
+                        coupon_dict['date_verified'] = None
+                        coupon_dict['grv_reference'] = None
+                        self.db_manager.update(coupon_dict)
+                    else:
+                        # Local mode: use (model_class, record_id, update_fields)
+                        update_fields = {
+                            'verified': False,
+                            'verification_reference': None,
+                            'delivery_note_number': None,
+                            'date_verified': None,
+                            'grv_reference': None
+                        }
+                        # get_id helper for compatibility
+                        from src.utils.model_helpers import get_id
+                        self.db_manager.update(PatientCoupon, get_id(coupon), update_fields)
+                    updated_count += 1
                 QMessageBox.information(
                     self,
                     "Verification Undone",
                     f"✅ Successfully undone verification for {updated_count} coupon(s).\n\n"
                     f"The coupons are now back to pending status."
                 )
-                
                 # Refresh the list
                 self.load_recent_verifications()
-                
             except Exception as e:
                 QMessageBox.critical(
                     self,

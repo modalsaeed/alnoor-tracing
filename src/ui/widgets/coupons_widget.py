@@ -1,3 +1,4 @@
+from src.utils.model_helpers import get_attr
 """
 Coupons Widget - Patient coupon management with verification workflow.
 
@@ -7,6 +8,7 @@ This is the core business functionality linking all entities together.
 
 from typing import Optional
 from datetime import datetime
+from src.utils.model_helpers import get_attr, get_id, get_name, get_nested_attr
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -40,79 +42,65 @@ class CouponsWidget(QWidget):
         super().__init__(parent)
         self.db_manager = db_manager
         self.coupons = []
-        self.filtered_coupons = []
-        self.date_filter_enabled = True  # Enable by default to show 1 month
-        self.init_ui()
-        self.load_coupons()
-    
-    def init_ui(self):
-        """Initialize the user interface."""
+        # Main layout setup
         layout = QVBoxLayout(self)
-        
-        # Title and description
-        title = QLabel(f"{IconStyles.COUPON} Patient Coupons Management")
-        title.setStyleSheet(f"""
-            font-size: {Fonts.SIZE_LARGE}px;
-            font-weight: {Fonts.WEIGHT_BOLD};
-            color: {Colors.TEXT_PRIMARY};
-            margin-bottom: {Spacing.SMALL}px;
-        """)
-        layout.addWidget(title)
-        
-        desc = QLabel("Manage patient coupons, verify distributions, and track product usage")
-        desc.setStyleSheet(f"""
-            color: {Colors.TEXT_SECONDARY};
-            margin-bottom: {Spacing.NORMAL}px;
-        """)
-        layout.addWidget(desc)
-        
-        # Search and filter section
         filter_layout = QHBoxLayout()
+        # Table setup
+        self.table = QTableWidget()
+        self.table.setColumnCount(12)
+        self.table.setHorizontalHeaderLabels([
+            "Coupon Ref", "Patient Name", "CPR", "Product", "Quantity", "Medical Centre", "Distribution Location", "Date", "DN Number", "GRV Reference", "Status", "Verification Reference"
+        ])
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)  # Allow multi-selection
+        self.table.doubleClicked.connect(self.edit_coupon)
+        self.table.setStyleSheet(StyleSheets.table())
+        # Set column resize modes for better visibility
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)   # Coupon Ref
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)           # Patient Name
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # CPR
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)           # Product
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # Quantity
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)           # Medical Centre
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)           # Distribution Location
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)  # Date
+        header.setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents)  # DN Number
+        header.setSectionResizeMode(9, QHeaderView.ResizeMode.ResizeToContents)  # GRV Reference
+        header.setSectionResizeMode(10, QHeaderView.ResizeMode.ResizeToContents) # Status
+        header.setSectionResizeMode(11, QHeaderView.ResizeMode.Stretch)          # Verification Reference
+        header.setStretchLastSection(True)
+        # Only add self.table to the layout after layout is initialized, not here
         
-        # Search box
-        search_label = QLabel(f"{IconStyles.SEARCH} Search:")
-        filter_layout.addWidget(search_label)
-        
+        # Search input
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search by patient name, CPR, or verification reference...")
+        self.search_input.setPlaceholderText("Search by patient, CPR, or verification ref...")
         self.search_input.textChanged.connect(self.apply_filters)
-        self.search_input.setMinimumWidth(300)
-        self.search_input.setStyleSheet(StyleSheets.input_field())
         filter_layout.addWidget(self.search_input)
-        
-        # Verification status filter
-        status_label = QLabel("Status:")
-        filter_layout.addWidget(status_label)
-        
+
+        # Status filter
         self.status_filter = QComboBox()
         self.status_filter.addItems(["All", "Pending", "Verified"])
         self.status_filter.currentTextChanged.connect(self.apply_filters)
         filter_layout.addWidget(self.status_filter)
-        
+
         # Product filter
-        product_label = QLabel("Product:")
-        filter_layout.addWidget(product_label)
-        
         self.product_filter = QComboBox()
-        self.product_filter.currentTextChanged.connect(self.apply_filters)
+        self.product_filter.currentIndexChanged.connect(self.apply_filters)
         filter_layout.addWidget(self.product_filter)
-        
-        # MOH Health Centre filter
-        centre_label = QLabel("MOH Centre:")
-        filter_layout.addWidget(centre_label)
-        
+
+        # Medical Centre filter
         self.centre_filter = QComboBox()
-        self.centre_filter.currentTextChanged.connect(self.apply_filters)
+        self.centre_filter.currentIndexChanged.connect(self.apply_filters)
         filter_layout.addWidget(self.centre_filter)
-        
+
         # Distribution Location filter
         location_label = QLabel("Location:")
         filter_layout.addWidget(location_label)
-        
         self.location_filter = QComboBox()
         self.location_filter.currentTextChanged.connect(self.apply_filters)
         filter_layout.addWidget(self.location_filter)
-        
+
         filter_layout.addStretch()
         layout.addLayout(filter_layout)
         
@@ -214,36 +202,6 @@ class CouponsWidget(QWidget):
             font-weight: {Fonts.WEIGHT_BOLD};
         """)
         layout.addWidget(self.stats_label)
-        
-        # Table
-        self.table = QTableWidget()
-        self.table.setColumnCount(12)
-        self.table.setHorizontalHeaderLabels([
-            "ID", "Patient Name", "CPR", "Product", "Quantity",
-            "MOH Health Centre", "Distribution", "Date", "DN Number", "GRV Reference", "Status", "Verification Ref"
-        ])
-        
-        # Configure table
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # ID
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)  # Patient Name
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # CPR
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)  # Product
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # Quantity
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)  # Medical Centre
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)  # Distribution
-        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)  # Date
-        header.setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)  # DN Number
-        header.setSectionResizeMode(9, QHeaderView.ResizeMode.Stretch)  # GRV Reference
-        header.setSectionResizeMode(10, QHeaderView.ResizeMode.ResizeToContents)  # Status
-        header.setSectionResizeMode(11, QHeaderView.ResizeMode.Stretch)  # Verification Ref
-        
-        self.table.setAlternatingRowColors(True)
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)  # Allow multi-selection
-        self.table.doubleClicked.connect(self.edit_coupon)
-        self.table.setStyleSheet(StyleSheets.table())
-        
         layout.addWidget(self.table)
     
     def load_filter_data(self):
@@ -251,20 +209,23 @@ class CouponsWidget(QWidget):
         try:
             # Load products
             products = self.db_manager.get_all(Product)
+            self.products_by_id = {get_id(product): product for product in products}
             self.product_filter.clear()
             self.product_filter.addItem("All Products", None)
             for product in products:
                 self.product_filter.addItem(get_name(product), get_id(product))
-            
+
             # Load medical centres
             centres = self.db_manager.get_all(MedicalCentre)
+            self.centres_by_id = {get_id(centre): centre for centre in centres}
             self.centre_filter.clear()
             self.centre_filter.addItem("All Centres", None)
             for centre in centres:
                 self.centre_filter.addItem(get_name(centre), get_id(centre))
-            
+
             # Load distribution locations
             locations = self.db_manager.get_all(DistributionLocation)
+            self.locations_by_id = {get_id(location): location for location in locations}
             self.location_filter.clear()
             self.location_filter.addItem("All Locations", None)
             for location in locations:
@@ -295,53 +256,65 @@ class CouponsWidget(QWidget):
         # Enable date filtering when this is called from Apply button
         self.date_filter_enabled = True
         
-        search_text = self.search_input.text().lower()
-        status_filter = self.status_filter.currentText()
-        product_id = self.product_filter.currentData()
-        centre_id = self.centre_filter.currentData()
-        location_id = self.location_filter.currentData()
-        date_from = self.date_from.date().toPyDate()
-        date_to = self.date_to.date().toPyDate()
+        search_text = self.search_input.text().lower() if self.search_input else ""
+        status_filter = self.status_filter.currentText() if self.status_filter else "All"
+        product_id = self.product_filter.currentData() if self.product_filter else None
+        centre_id = self.centre_filter.currentData() if self.centre_filter else None
+        location_id = self.location_filter.currentData() if self.location_filter else None
+        date_from = self.date_from.date().toPyDate() if self.date_from else None
+        date_to = self.date_to.date().toPyDate() if self.date_to else None
         
         self.filtered_coupons = []
         
         for coupon in self.coupons:
-            # Search filter
-            if search_text:
-                # Handle None values for optional fields
-                patient_name = coupon.patient_name or ""
-                cpr = coupon.cpr or ""
-                verification_ref = coupon.verification_reference or ""
-                searchable = f"{patient_name} {cpr} {verification_ref}".lower()
-                if search_text not in searchable:
+            # Search filter (dict/ORM safe)
+            patient_name = get_attr(coupon, 'patient_name', '')
+            cpr = get_attr(coupon, 'cpr', '')
+            verification_ref = get_attr(coupon, 'verification_reference', '')
+            coupon_ref = str(get_attr(coupon, 'coupon_reference', ''))
+            searchable = f"{patient_name} {cpr} {verification_ref} {coupon_ref}".lower()
+            if search_text and search_text not in searchable:
+                continue
+
+            # Status filter (dict/ORM safe)
+            verified = get_attr(coupon, 'verified', False)
+            if status_filter == "Pending" and verified:
+                continue
+            elif status_filter == "Verified" and not verified:
+                continue
+
+            # Product filter (dict/ORM safe)
+            coupon_product_id = get_attr(coupon, 'product_id', None)
+            if product_id and coupon_product_id != product_id:
+                continue
+
+            # Medical Centre filter (dict/ORM safe)
+            coupon_centre_id = get_attr(coupon, 'medical_centre_id', None)
+            if centre_id and coupon_centre_id != centre_id:
+                continue
+
+            # Distribution Location filter (dict/ORM safe)
+            coupon_location_id = get_attr(coupon, 'distribution_location_id', None)
+            if location_id and coupon_location_id != location_id:
+                continue
+
+            # Date filter (only if enabled, dict/ORM safe)
+            if self.date_filter_enabled and date_from and date_to:
+                coupon_date_val = get_attr(coupon, 'date_received') or get_attr(coupon, 'created_at')
+                coupon_date = None
+                import datetime as dt
+                if isinstance(coupon_date_val, dt.datetime):
+                    coupon_date = coupon_date_val.date()
+                elif isinstance(coupon_date_val, str):
+                    try:
+                        coupon_date = dt.datetime.fromisoformat(coupon_date_val).date()
+                    except Exception:
+                        coupon_date = None
+                if coupon_date is None:
                     continue
-            
-            # Status filter
-            if status_filter == "Pending" and coupon.verified:
-                continue
-            elif status_filter == "Verified" and not coupon.verified:
-                continue
-            
-            # Product filter
-            if product_id and coupon.product_id != product_id:
-                continue
-            
-            # Medical Centre filter
-            if centre_id and coupon.medical_centre_id != centre_id:
-                continue
-            
-            # Distribution Location filter
-            if location_id and coupon.distribution_location_id != location_id:
-                continue
-            
-            # Date filter (only if enabled)
-            if self.date_filter_enabled:
-                coupon_date = coupon.date_received.date()
-                date_from = self.date_from.date().toPyDate()
-                date_to = self.date_to.date().toPyDate()
                 if coupon_date < date_from or coupon_date > date_to:
                     continue
-            
+
             self.filtered_coupons.append(coupon)
         
         self.populate_table()
@@ -358,20 +331,33 @@ class CouponsWidget(QWidget):
         """Populate table with filtered coupons."""
         self.table.setRowCount(0)
         
-        # Sort coupons by date_received
+        # Sort coupons by date_received (dict/ORM safe)
+        import datetime as dt
+        from src.utils.model_helpers import get_attr
         sort_order = self.sort_order.currentData() if hasattr(self, 'sort_order') else "desc"
+        def get_sort_date(c):
+            val = get_attr(c, 'date_received') or get_attr(c, 'created_at')
+            if isinstance(val, dt.datetime):
+                return val
+            elif isinstance(val, str):
+                try:
+                    return dt.datetime.fromisoformat(val)
+                except Exception:
+                    return dt.datetime.min
+            return dt.datetime.min
         sorted_coupons = sorted(
             self.filtered_coupons,
-            key=lambda c: c.date_received if c.date_received else c.created_at,
+            key=get_sort_date,
             reverse=(sort_order == "desc")
         )
-        
+
         for coupon in sorted_coupons:
             row = self.table.rowCount()
             self.table.insertRow(row)
             
             # ID
-            self.table.setItem(row, 0, QTableWidgetItem(str(get_id(coupon))))
+            from src.utils.model_helpers import get_attr
+            self.table.setItem(row, 0, QTableWidgetItem(str(get_attr(coupon, 'coupon_reference', '-'))))
             
             # Patient Name (handle None)
             self.table.setItem(row, 1, QTableWidgetItem(get_attr(coupon, 'patient_name', 'N/A')))
@@ -379,63 +365,87 @@ class CouponsWidget(QWidget):
             # CPR (handle None)
             self.table.setItem(row, 2, QTableWidgetItem(get_attr(coupon, 'cpr', 'N/A')))
             
-            # Product
-            product_name = get_nested_attr(coupon, 'product.name', 'Unknown')
+            # Product (resolve name for dicts)
+            product_id = get_attr(coupon, 'product_id', None)
+            if isinstance(coupon, dict) and product_id and hasattr(self, 'products_by_id'):
+                product = self.products_by_id.get(product_id)
+                product_name = get_name(product) if product else 'Unknown'
+            else:
+                product_name = get_nested_attr(coupon, 'product.name', 'Unknown')
             self.table.setItem(row, 3, QTableWidgetItem(product_name))
-            
+
             # Quantity
             quantity_item = QTableWidgetItem(f"{get_attr(coupon, 'quantity_pieces', 0)} pcs")
             quantity_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(row, 4, quantity_item)
-            
-            # Medical Centre
-            centre_name = get_nested_attr(coupon, 'medical_centre.name', 'Unknown')
+
+            # Medical Centre (resolve name for dicts)
+            centre_id = get_attr(coupon, 'medical_centre_id', None)
+            if isinstance(coupon, dict) and centre_id and hasattr(self, 'centres_by_id'):
+                centre = self.centres_by_id.get(centre_id)
+                centre_name = get_name(centre) if centre else 'Unknown'
+            else:
+                centre_name = get_nested_attr(coupon, 'medical_centre.name', 'Unknown')
             self.table.setItem(row, 5, QTableWidgetItem(centre_name))
-            
-            # Distribution Location
-            location_name = get_nested_attr(coupon, 'distribution_location.name', 'Unknown')
+
+            # Distribution Location (resolve name for dicts)
+            location_id = get_attr(coupon, 'distribution_location_id', None)
+            if isinstance(coupon, dict) and location_id and hasattr(self, 'locations_by_id'):
+                location = self.locations_by_id.get(location_id)
+                location_name = get_name(location) if location else 'Unknown'
+            else:
+                location_name = get_nested_attr(coupon, 'distribution_location.name', 'Unknown')
             self.table.setItem(row, 6, QTableWidgetItem(location_name))
             
-            # Date - use date_received (date only, no timestamp)
-            coupon_date = coupon.date_received if coupon.date_received else coupon.created_at
-            date_str = coupon_date.strftime("%Y-%m-%d")
+            # Date - use date_received (date only, no timestamp), dict/ORM safe
+            coupon_date_val = get_attr(coupon, 'date_received') or get_attr(coupon, 'created_at')
+            coupon_date = None
+            import datetime as dt
+            if isinstance(coupon_date_val, dt.datetime):
+                coupon_date = coupon_date_val
+            elif isinstance(coupon_date_val, str):
+                try:
+                    coupon_date = dt.datetime.fromisoformat(coupon_date_val)
+                except Exception:
+                    coupon_date = None
+            date_str = coupon_date.strftime("%Y-%m-%d") if coupon_date else "-"
             self.table.setItem(row, 7, QTableWidgetItem(date_str))
             
-            # DN Number
-            dn_number = coupon.delivery_note_number or "-"
+            # DN Number (dict/ORM safe)
+            dn_number = get_attr(coupon, 'delivery_note_number', '-')
             self.table.setItem(row, 8, QTableWidgetItem(dn_number))
-            
-            # GRV Reference
-            grv_ref = coupon.grv_reference or "-"
+
+            # GRV Reference (dict/ORM safe)
+            grv_ref = get_attr(coupon, 'grv_reference', '-')
             grv_item = QTableWidgetItem(grv_ref)
-            if coupon.grv_reference:
+            if grv_ref and grv_ref != '-':
                 grv_item.setBackground(QColor(Colors.ALERT_SUCCESS_BG))
                 grv_item.setForeground(QColor(Colors.SUCCESS))
             self.table.setItem(row, 9, grv_item)
-            
-            # Status (with color coding)
-            status_text = f"{IconStyles.VERIFIED} Verified" if coupon.verified else f"{IconStyles.PENDING} Pending"
+
+            # Status (with color coding, dict/ORM safe)
+            verified = get_attr(coupon, 'verified', False)
+            status_text = f"{IconStyles.VERIFIED} Verified" if verified else f"{IconStyles.PENDING} Pending"
             status_item = QTableWidgetItem(status_text)
             status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            if coupon.verified:
+            if verified:
                 status_item.setBackground(QColor(Colors.ALERT_SUCCESS_BG))
                 status_item.setForeground(QColor(Colors.SUCCESS))
             else:
                 status_item.setBackground(QColor(Colors.ALERT_WARNING_BG))
                 status_item.setForeground(QColor(Colors.WARNING))
             self.table.setItem(row, 10, status_item)
-            
-            # Verification Reference
-            ver_ref = coupon.verification_reference or "-"
+
+            # Verification Reference (dict/ORM safe)
+            ver_ref = get_attr(coupon, 'verification_reference', '-')
             self.table.setItem(row, 11, QTableWidgetItem(ver_ref))
     
     def update_statistics(self):
         """Update statistics label."""
         total = len(self.filtered_coupons)
-        verified = sum(1 for c in self.filtered_coupons if c.verified)
+        verified = sum(1 for c in self.filtered_coupons if get_attr(c, 'verified', False))
         pending = total - verified
-        total_quantity = sum(c.quantity_pieces for c in self.filtered_coupons)
-        
+        total_quantity = sum(get_attr(c, 'quantity_pieces', 0) for c in self.filtered_coupons)
         self.stats_label.setText(
             f"{IconStyles.DASHBOARD} Total: {total} coupons | "
             f"{IconStyles.VERIFIED} Verified: {verified} | "
@@ -470,8 +480,8 @@ class CouponsWidget(QWidget):
         
         coupon = self.filtered_coupons[selected_row]
         
-        # Cannot edit verified coupons
-        if coupon.verified:
+        # Cannot edit verified coupons (dict/ORM safe)
+        if get_attr(coupon, 'verified', False):
             QMessageBox.warning(
                 self,
                 "Cannot Edit",
@@ -508,9 +518,9 @@ class CouponsWidget(QWidget):
         
         # Get selected coupons
         selected_coupons = [self.filtered_coupons[row.row()] for row in selected_rows]
-        
-        # Check if any are already verified
-        already_verified = [c for c in selected_coupons if c.verified]
+
+        # Check if any are already verified (use get_attr for dict/ORM compatibility)
+        already_verified = [c for c in selected_coupons if get_attr(c, 'verified', False)]
         if already_verified:
             if len(already_verified) == len(selected_coupons):
                 # All selected are verified
@@ -562,7 +572,7 @@ class CouponsWidget(QWidget):
         coupon = self.filtered_coupons[selected_row]
         
         # Cannot delete verified coupons (would mess up stock tracking)
-        if coupon.verified:
+        if get_attr(coupon, 'verified', False):
             reply = QMessageBox.question(
                 self,
                 "Delete Verified Coupon?",
@@ -577,15 +587,19 @@ class CouponsWidget(QWidget):
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No
             )
-            
+
             if reply == QMessageBox.StandardButton.No:
                 return
             
-            # Restore stock before deleting
+            # Restore stock before deleting (API/local compatible)
             try:
                 from services.stock_service import StockService
                 stock_service = StockService(self.db_manager)
-                stock_service.restore_stock(get_id(coupon))
+                product_id = get_attr(coupon, 'product_id', None)
+                quantity = get_attr(coupon, 'quantity_pieces', 0)
+                # Patch: Manually fetch purchase orders using db_manager.get_all to avoid session.query
+                purchase_orders = self.db_manager.get_all(getattr(self.db_manager, 'PurchaseOrder', None) or __import__('src.database.models', fromlist=['PurchaseOrder']).PurchaseOrder)
+                stock_service.restore_stock(product_id, quantity, purchase_orders=purchase_orders)
             except Exception as e:
                 QMessageBox.critical(
                     self,
@@ -609,7 +623,16 @@ class CouponsWidget(QWidget):
                 return
         
         try:
-            self.db_manager.delete(coupon)
+            # Patch: Use db_manager.delete(PatientCoupon, id) for API mode compatibility
+            if hasattr(self.db_manager, 'delete') and hasattr(self.db_manager, 'get_all'):
+                # Try to get coupon id (works for both dict and ORM)
+                coupon_id = get_attr(coupon, 'id', None)
+                if coupon_id is not None:
+                    self.db_manager.delete(PatientCoupon, coupon_id)
+                else:
+                    self.db_manager.delete(coupon)
+            else:
+                self.db_manager.delete(coupon)
             QMessageBox.information(
                 self,
                 "Success",

@@ -225,7 +225,7 @@ class PurchaseDialog(QDialog):
                 if not self.is_edit_mode:
                     self.quantity_input.setMaximum(get_attr(po, 'remaining_stock'))
                 else:
-                    max_qty = get_attr(po, 'remaining_stock') + self.purchase.quantity
+                    max_qty = get_attr(po, 'remaining_stock') + get_attr(self.purchase, 'quantity', 0)
                     self.quantity_input.setMaximum(max_qty)
         except Exception:
             pass  # Silently fail for UI updates
@@ -243,7 +243,7 @@ class PurchaseDialog(QDialog):
             if po:
                 max_allowed = get_attr(po, 'remaining_stock')
                 if self.is_edit_mode:
-                    max_allowed += self.purchase.quantity
+                    max_allowed += get_attr(self.purchase, 'quantity', 0)
                 if quantity > max_allowed:
                     self.quantity_input.setStyleSheet("background-color: #ffcccc;")
                 else:
@@ -262,27 +262,32 @@ class PurchaseDialog(QDialog):
         """Populate fields with existing purchase data."""
         if not self.purchase:
             return
-        
-        self.invoice_input.setText(self.purchase.invoice_number)
-        self.supplier_input.setText(self.purchase.supplier_name or "")
-        
-        if self.purchase.purchase_date:
-            qdate = QDate(
-                self.purchase.purchase_date.year,
-                self.purchase.purchase_date.month,
-                self.purchase.purchase_date.day
-            )
+
+        self.invoice_input.setText(get_attr(self.purchase, 'invoice_number', ''))
+        self.supplier_input.setText(get_attr(self.purchase, 'supplier_name', ''))
+
+        purchase_date = get_attr(self.purchase, 'purchase_date', None)
+        if purchase_date:
+            if isinstance(purchase_date, str):
+                try:
+                    dt = datetime.fromisoformat(purchase_date)
+                    qdate = QDate(dt.year, dt.month, dt.day)
+                except Exception:
+                    qdate = QDate.currentDate()
+            else:
+                qdate = QDate(purchase_date.year, purchase_date.month, purchase_date.day)
             self.date_input.setDate(qdate)
-        
+
         # Set PO
+        purchase_order_id = get_attr(self.purchase, 'purchase_order_id', None)
         for i in range(self.po_combo.count()):
-            if self.po_combo.itemData(i) == self.purchase.purchase_order_id:
+            if self.po_combo.itemData(i) == purchase_order_id:
                 self.po_combo.setCurrentIndex(i)
                 break
-        
-        self.quantity_input.setValue(self.purchase.quantity)
-        self.unit_price_input.setValue(float(self.purchase.unit_price))
-        self.notes_input.setPlainText(self.purchase.notes or "")
+
+        self.quantity_input.setValue(get_attr(self.purchase, 'quantity', 0))
+        self.unit_price_input.setValue(float(get_attr(self.purchase, 'unit_price', 0.0)))
+        self.notes_input.setPlainText(get_attr(self.purchase, 'notes', ''))
         
         # Disable PO selection in edit mode (can't change PO)
         self.po_combo.setEnabled(False)
@@ -329,7 +334,7 @@ class PurchaseDialog(QDialog):
                     )
                     return
             else:
-                available = get_attr(po, 'remaining_stock') + self.purchase.quantity
+                available = get_attr(po, 'remaining_stock') + get_attr(self.purchase, 'quantity', 0)
                 if quantity > available:
                     QMessageBox.warning(
                         self,
@@ -368,6 +373,7 @@ class PurchaseDialog(QDialog):
                 # Update existing purchase (dict/ORM safe)
                 old_quantity = get_attr(self.purchase, 'quantity', 0)
                 quantity_diff = quantity - old_quantity
+                # Always use get_attr/setitem for dicts, setattr for ORM
                 if isinstance(self.purchase, dict):
                     self.purchase['invoice_number'] = invoice_number
                     self.purchase['supplier_name'] = sanitize_input(self.supplier_input.text())
@@ -378,24 +384,46 @@ class PurchaseDialog(QDialog):
                     self.purchase['total_price'] = total_price
                     self.purchase['notes'] = sanitize_input(self.notes_input.toPlainText())
                     self.purchase['updated_at'] = datetime.now()
+                    # API client mode: persist update
+                    if hasattr(self.db_manager, 'update_purchase'):
+                        self.db_manager.update_purchase(get_id(self.purchase),
+                            invoice_number=invoice_number,
+                            supplier_name=sanitize_input(self.supplier_input.text()),
+                            purchase_date=purchase_date.isoformat() if hasattr(purchase_date, 'isoformat') else str(purchase_date),
+                            quantity=quantity,
+                            remaining_stock=self.purchase['remaining_stock'],
+                            unit_price=float(unit_price),
+                            total_price=float(total_price),
+                            notes=sanitize_input(self.notes_input.toPlainText())
+                        )
                 else:
-                    self.purchase.invoice_number = invoice_number
-                    self.purchase.supplier_name = sanitize_input(self.supplier_input.text())
-                    self.purchase.purchase_date = purchase_date
-                    self.purchase.quantity = quantity
-                    self.purchase.remaining_stock = self.purchase.remaining_stock + quantity_diff
-                    self.purchase.unit_price = Decimal(str(unit_price))
-                    self.purchase.total_price = total_price
-                    self.purchase.notes = sanitize_input(self.notes_input.toPlainText())
-                    self.purchase.updated_at = datetime.now()
-                # Adjust PO remaining stock
-                po.remaining_stock -= quantity_diff
+                    setattr(self.purchase, 'invoice_number', invoice_number)
+                    setattr(self.purchase, 'supplier_name', sanitize_input(self.supplier_input.text()))
+                    setattr(self.purchase, 'purchase_date', purchase_date)
+                    setattr(self.purchase, 'quantity', quantity)
+                    setattr(self.purchase, 'remaining_stock', get_attr(self.purchase, 'remaining_stock', 0) + quantity_diff)
+                    setattr(self.purchase, 'unit_price', Decimal(str(unit_price)))
+                    setattr(self.purchase, 'total_price', total_price)
+                    setattr(self.purchase, 'notes', sanitize_input(self.notes_input.toPlainText()))
+                    setattr(self.purchase, 'updated_at', datetime.now())
+                    # Local ORM mode: persist update
+                    if hasattr(self.db_manager, 'update'):
+                        self.db_manager.update(self.purchase)
+                # Adjust PO remaining stock (only if po is not None and update is implemented)
+                if po is not None:
+                    if isinstance(po, dict):
+                        po['remaining_stock'] = get_attr(po, 'remaining_stock', 0) - quantity_diff
+                    else:
+                        setattr(po, 'remaining_stock', get_attr(po, 'remaining_stock', 0) - quantity_diff)
+                    # Only call update if implemented and po is not None
+                    if hasattr(self.db_manager, 'update') and callable(getattr(self.db_manager, 'update', None)):
+                        self.db_manager.update(po)
             else:
                     # Create new purchase
                     purchase = Purchase(
                         invoice_number=invoice_number,
                         purchase_order_id=po_id,
-                        product_id=po.product_id,
+                        product_id=get_attr(po, 'product_id'),
                         quantity=quantity,
                         remaining_stock=quantity,  # Initially, all stock is available
                         unit_price=Decimal(str(unit_price)),
@@ -405,14 +433,29 @@ class PurchaseDialog(QDialog):
                         notes=sanitize_input(self.notes_input.toPlainText()),
                     )
                     
-                    # Reduce PO remaining stock
-                    po.remaining_stock -= quantity
-                    
-                    session.add(purchase)
-                    
-                    # Flush to get IDs
-                    session.flush()
-                    purchase_id = purchase.id
+                    # Save purchase and update PO remaining_stock only in ORM mode
+                    if hasattr(self.db_manager, 'get_session') and not hasattr(self.db_manager, 'server_url'):
+                        with self.db_manager.get_session() as session:
+                            session.add(purchase)
+                            po_obj = session.query(PurchaseOrder).filter(PurchaseOrder.id == po_id).first()
+                            if po_obj:
+                                po_obj.remaining_stock -= quantity
+                            session.flush()
+                            purchase_id = purchase.id
+                    else:
+                        # API client mode: only create purchase, do not try to update PO locally
+                        pd_str = purchase_date.isoformat() if not isinstance(purchase_date, str) else purchase_date
+                        result = self.db_manager.create_purchase(
+                            product_id=get_attr(po, 'product_id'),
+                            purchase_order_id=po_id,
+                            quantity=quantity,
+                            invoice_number=invoice_number,
+                            unit_price=unit_price,
+                            total_price=float(total_price),
+                            purchase_date=pd_str,
+                            supplier_name=sanitize_input(self.supplier_input.text()),
+                            notes=sanitize_input(self.notes_input.toPlainText())
+                        )
                 
             # Context manager will commit here
             QMessageBox.information(

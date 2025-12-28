@@ -183,9 +183,18 @@ class PurchasesWidget(QWidget):
     def load_purchases(self):
         """Load all purchases from database."""
         try:
+            from datetime import datetime
+            def get_purchase_date(p):
+                val = get_attr(p, 'purchase_date', None)
+                if isinstance(val, str):
+                    try:
+                        return datetime.fromisoformat(val)
+                    except Exception:
+                        return datetime.min
+                return val if val else datetime.min
             self.current_purchases = sorted(
                 self.db_manager.get_all(Purchase),
-                key=lambda p: p.purchase_date,
+                key=get_purchase_date,
                 reverse=True
             )
             self.display_purchases(self.current_purchases)
@@ -212,7 +221,17 @@ class PurchasesWidget(QWidget):
             self.table.setItem(row, 2, QTableWidgetItem(supplier))
             
             # Purchase Date
-            date_str = purchase.purchase_date.strftime("%Y-%m-%d") if purchase.purchase_date else "N/A"
+            val = get_attr(purchase, 'purchase_date', None)
+            if isinstance(val, str):
+                try:
+                    date_val = datetime.fromisoformat(val)
+                    date_str = date_val.strftime("%Y-%m-%d")
+                except Exception:
+                    date_str = val
+            elif val:
+                date_str = val.strftime("%Y-%m-%d")
+            else:
+                date_str = "N/A"
             self.table.setItem(row, 3, QTableWidgetItem(date_str))
             
             # Local PO Reference
@@ -224,31 +243,33 @@ class PurchasesWidget(QWidget):
             self.table.setItem(row, 5, QTableWidgetItem(product_name))
             
             # Quantity
-            qty_item = QTableWidgetItem(str(purchase.quantity))
+            qty_item = QTableWidgetItem(str(get_attr(purchase, 'quantity', 0)))
             qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(row, 6, qty_item)
             
             # Remaining Stock
-            remaining_item = QTableWidgetItem(str(purchase.remaining_stock))
+            remaining_item = QTableWidgetItem(str(get_attr(purchase, 'remaining_stock', 0)))
             remaining_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(row, 7, remaining_item)
             
             # Unit Price
-            unit_price_item = QTableWidgetItem(f"{float(purchase.unit_price):.3f} BHD")
+            unit_price = get_attr(purchase, 'unit_price', 0.0)
+            unit_price_item = QTableWidgetItem(f"{float(unit_price):.3f} BHD")
             unit_price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.table.setItem(row, 8, unit_price_item)
-            
+
             # Total Price
-            total_price_item = QTableWidgetItem(f"{float(purchase.total_price):.3f} BHD")
+            total_price = get_attr(purchase, 'total_price', 0.0)
+            total_price_item = QTableWidgetItem(f"{float(total_price):.3f} BHD")
             total_price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.table.setItem(row, 9, total_price_item)
             
             # Status
             status_item = QTableWidgetItem()
-            if purchase.remaining_stock == 0:
+            if get_attr(purchase, 'remaining_stock', 0) == 0:
                 status_item.setText("Fully Distributed")
                 status_item.setForeground(QColor(Colors.SUCCESS))
-            elif purchase.remaining_stock < purchase.quantity:
+            elif get_attr(purchase, 'remaining_stock', 0) < get_attr(purchase, 'quantity', 0):
                 status_item.setText("Partially Distributed")
                 status_item.setForeground(QColor(Colors.WARNING))
             else:
@@ -276,7 +297,7 @@ class PurchasesWidget(QWidget):
     def update_count_label(self):
         """Update the count label."""
         total = len(self.current_purchases)
-        total_value = sum(float(p.total_price) for p in self.current_purchases)
+        total_value = sum(float(get_attr(p, 'total_price', 0.0)) for p in self.current_purchases)
         self.count_label.setText(f"Total: {total} purchases | Value: {total_value:.3f} BHD")
     
     def on_selection_changed(self):
@@ -312,11 +333,11 @@ class PurchasesWidget(QWidget):
             return
         
         # Check if purchase has been distributed
-        if purchase.remaining_stock < purchase.quantity:
+        if get_attr(purchase, 'remaining_stock', 0) < get_attr(purchase, 'quantity', 0):
             reply = QMessageBox.question(
                 self,
                 "Purchase Partially Distributed",
-                f"This purchase has been partially distributed ({purchase.quantity - purchase.remaining_stock} units).\n"
+                f"This purchase has been partially distributed ({get_attr(purchase, 'quantity', 0) - get_attr(purchase, 'remaining_stock', 0)} units).\n"
                 "Editing may affect transaction records. Continue?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
@@ -337,11 +358,11 @@ class PurchasesWidget(QWidget):
             return
         
         # Check if purchase has been distributed
-        if purchase.remaining_stock < purchase.quantity:
+        if get_attr(purchase, 'remaining_stock', 0) < get_attr(purchase, 'quantity', 0):
             QMessageBox.critical(
                 self,
                 "Cannot Delete",
-                f"This purchase has been distributed to locations ({purchase.quantity - purchase.remaining_stock} units).\n"
+                f"This purchase has been distributed to locations ({get_attr(purchase, 'quantity', 0) - get_attr(purchase, 'remaining_stock', 0)} units).\n"
                 "You cannot delete a purchase that has active transactions."
             )
             return
@@ -353,7 +374,7 @@ class PurchasesWidget(QWidget):
             f"Are you sure you want to delete purchase:\n"
             f"Invoice: {get_attr(purchase, 'invoice_number', '')}\n"
             f"Supplier: {get_attr(purchase, 'supplier_name', 'N/A')}\n"
-            f"Quantity: {purchase.quantity}",
+            f"Quantity: {get_attr(purchase, 'quantity', 0)}",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         

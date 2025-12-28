@@ -188,12 +188,16 @@ class TransactionsWidget(QWidget):
     
     def load_transactions(self):
         """Load all transactions into the table."""
+        transactions = self.db_manager.get_all(Transaction)
+        # Use get_attr for dict/ORM compatibility
         transactions = sorted(
-            self.db_manager.get_all(Transaction),
-            key=lambda t: (t.transaction_date, t.created_at),
+            transactions,
+            key=lambda t: (
+                get_attr(t, 'transaction_date', ''),
+                get_attr(t, 'created_at', get_attr(t, 'transaction_date', ''))
+            ),
             reverse=True
         )
-        
         self.populate_table(transactions)
         self.update_summary(transactions)
     
@@ -228,33 +232,52 @@ class TransactionsWidget(QWidget):
             qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.transactions_table.setItem(row, 4, qty_item)
 
-            # Transaction Date
-            transaction_date = get_attr(txn, 'transaction_date')
-            if transaction_date and hasattr(transaction_date, 'strftime'):
-                date_str = transaction_date.strftime("%d/%m/%Y")
-            else:
-                date_str = str(transaction_date) if transaction_date else ''
+            # Transaction Date (dict/ORM safe)
+            transaction_date = get_attr(txn, 'transaction_date', None)
+            date_str = ''
+            if transaction_date:
+                try:
+                    if isinstance(transaction_date, str):
+                        dt = datetime.fromisoformat(transaction_date)
+                        date_str = dt.strftime("%d/%m/%Y")
+                    else:
+                        date_str = transaction_date.strftime("%d/%m/%Y")
+                except Exception:
+                    date_str = str(transaction_date)
             date_item = QTableWidgetItem(date_str)
             date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.transactions_table.setItem(row, 5, date_item)
             
-            # Created At
-            created_item = QTableWidgetItem(txn.created_at.strftime("%d/%m/%Y %H:%M"))
+            # Created At (dict/ORM safe)
+            created_at = get_attr(txn, 'created_at', None)
+            if created_at is None:
+                created_at = get_attr(txn, 'transaction_date', None)
+            created_str = ''
+            if created_at:
+                try:
+                    # If string, try to parse to datetime
+                    if isinstance(created_at, str):
+                        dt = datetime.fromisoformat(created_at)
+                        created_str = dt.strftime("%d/%m/%Y %H:%M")
+                    else:
+                        created_str = created_at.strftime("%d/%m/%Y %H:%M")
+                except Exception:
+                    created_str = str(created_at)
+            created_item = QTableWidgetItem(created_str)
             created_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             created_item.setForeground(Qt.GlobalColor.gray)
             self.transactions_table.setItem(row, 6, created_item)
             
-            # Store transaction ID in row
-            self.transactions_table.item(row, 0).setData(Qt.ItemDataRole.UserRole, txn.id)
+            # Store transaction ID in row (dict/ORM safe)
+            self.transactions_table.item(row, 0).setData(Qt.ItemDataRole.UserRole, get_attr(txn, 'id'))
     
     def update_summary(self, transactions):
         """Update the summary label."""
         total_count = len(transactions)
-        total_quantity = sum(txn.quantity for txn in transactions)
-        
+        total_quantity = sum(get_attr(txn, 'quantity', 0) for txn in transactions)
         # Count unique products and locations
-        unique_products = len(set(txn.product_id for txn in transactions if txn.product_id))
-        unique_locations = len(set(txn.distribution_location_id for txn in transactions if txn.distribution_location_id))
+        unique_products = len(set(get_attr(txn, 'product_id', None) for txn in transactions if get_attr(txn, 'product_id', None)))
+        unique_locations = len(set(get_attr(txn, 'distribution_location_id', None) for txn in transactions if get_attr(txn, 'distribution_location_id', None)))
         
         summary_text = (
             f"📊 <b>Summary:</b> "
@@ -274,12 +297,12 @@ class TransactionsWidget(QWidget):
         # Apply product filter
         product_id = self.product_filter.currentData()
         if product_id is not None:
-            all_transactions = [t for t in all_transactions if t.product_id == product_id]
-        
+            all_transactions = [t for t in all_transactions if get_attr(t, 'product_id', None) == product_id]
+
         # Apply location filter
         location_id = self.location_filter.currentData()
         if location_id is not None:
-            all_transactions = [t for t in all_transactions if t.distribution_location_id == location_id]
+            all_transactions = [t for t in all_transactions if get_attr(t, 'distribution_location_id', None) == location_id]
         
         # Apply date range filter
         date_from = self.date_from_input.date().toPyDate()
@@ -289,25 +312,29 @@ class TransactionsWidget(QWidget):
         date_to_dt = datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59)
         
         all_transactions = [
-            t for t in all_transactions 
-            if date_from_dt <= t.transaction_date <= date_to_dt
+            t for t in all_transactions
+            if date_from_dt <= (
+                (datetime.fromisoformat(get_attr(t, 'transaction_date')) if isinstance(get_attr(t, 'transaction_date', None), str) else get_attr(t, 'transaction_date', datetime.min))
+            ) <= date_to_dt
         ]
-        
+
         # Apply search filter
         search_text = self.search_input.text().strip().lower()
         if search_text:
             all_transactions = [
-                t for t in all_transactions 
-                if search_text in (t.transaction_reference or '').lower()
+                t for t in all_transactions
+                if search_text in (get_attr(t, 'transaction_reference', '') or '').lower()
             ]
-        
+
         # Sort results
         transactions = sorted(
             all_transactions,
-            key=lambda t: (t.transaction_date, t.created_at),
+            key=lambda t: (
+                get_attr(t, 'transaction_date', ''),
+                get_attr(t, 'created_at', get_attr(t, 'transaction_date', ''))
+            ),
             reverse=True
         )
-        
         self.populate_table(transactions)
         self.update_summary(transactions)
     

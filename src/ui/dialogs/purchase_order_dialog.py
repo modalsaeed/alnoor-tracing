@@ -230,10 +230,13 @@ class PurchaseOrderDialog(QDialog):
             self.product_combo.clear()
             self.product_combo.addItem("-- Select Product --", None)
             
+            from src.utils.model_helpers import get_name, get_attr, get_id
             for product in self.products:
+                name = get_name(product)
+                reference = get_attr(product, 'reference', '')
                 self.product_combo.addItem(
-                    f"{product.name} ({product.reference})",
-                    product.id
+                    f"{name} ({reference})",
+                    get_id(product)
                 )
             
             if not self.products:
@@ -253,11 +256,12 @@ class PurchaseOrderDialog(QDialog):
         """Handle product selection change."""
         product_id = self.product_combo.currentData()
         
+        from src.utils.model_helpers import get_id, get_attr
         if product_id:
-            # Find the product
-            product = next((p for p in self.products if p.id == product_id), None)
+            # Find the product (support dict and ORM)
+            product = next((p for p in self.products if get_id(p) == product_id), None)
             if product:
-                self.product_desc_display.setText(product.reference)
+                self.product_desc_display.setText(get_attr(product, 'reference', ''))
         else:
             self.product_desc_display.clear()
     
@@ -363,7 +367,7 @@ class PurchaseOrderDialog(QDialog):
         po_reference_normalized = normalize_reference(po_reference)
         
         # Check for duplicate PO reference
-        if not self.is_edit_mode or (self.order and po_reference_normalized != self.order.po_reference):
+        if not self.is_edit_mode or (self.order and po_reference_normalized != get_attr(self.order, 'po_reference', '')):
             if self.is_po_reference_duplicate(po_reference_normalized):
                 return False, f"PO reference '{po_reference_normalized}' already exists. Please use a unique reference."
         

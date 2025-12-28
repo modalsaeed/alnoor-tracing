@@ -190,28 +190,42 @@ class BackupDialog(QDialog):
         layout.addLayout(close_layout)
     
     def load_backups(self):
-        """Load and display available backups."""
+        """Load and display available backups (supports both local and API client modes)."""
         try:
-            backups = self.db_manager.list_backups()
-            
-            self.backups_table.setRowCount(len(backups))
-            
-            for row, backup in enumerate(backups):
-                # Backup name
+            backups_raw = self.db_manager.list_backups()
+            backup_list = []
+            # API client: dict with 'manual' and 'weekly' keys, each a list of paths
+            if isinstance(backups_raw, dict) and ('manual' in backups_raw or 'weekly' in backups_raw):
+                from pathlib import Path
+                import os
+                import datetime
+                for category in ('manual', 'weekly'):
+                    for path in backups_raw.get(category, []):
+                        try:
+                            stat = os.stat(path)
+                            backup_list.append({
+                                'name': Path(path).name,
+                                'created_at': datetime.datetime.fromtimestamp(stat.st_mtime),
+                                'size_mb': stat.st_size / (1024*1024),
+                                'path': path
+                            })
+                        except Exception:
+                            continue
+            # Local mode: list of dicts
+            elif isinstance(backups_raw, list):
+                backup_list = backups_raw
+            else:
+                backup_list = []
+            self.backups_table.setRowCount(len(backup_list))
+            for row, backup in enumerate(backup_list):
                 name_item = QTableWidgetItem(backup['name'])
                 self.backups_table.setItem(row, 0, name_item)
-                
-                # Created date
-                date_str = backup['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+                date_str = backup['created_at'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(backup['created_at'], 'strftime') else str(backup['created_at'])
                 date_item = QTableWidgetItem(date_str)
                 self.backups_table.setItem(row, 1, date_item)
-                
-                # Size
                 size_item = QTableWidgetItem(f"{backup['size_mb']:.2f}")
                 size_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.backups_table.setItem(row, 2, size_item)
-                
-                # Actions - Create restore button
                 restore_btn = QPushButton("🔄 Restore")
                 restore_btn.setStyleSheet("""
                     QPushButton {
@@ -228,15 +242,12 @@ class BackupDialog(QDialog):
                 """)
                 restore_btn.clicked.connect(lambda checked, path=backup['path']: self.restore_backup(path))
                 self.backups_table.setCellWidget(row, 3, restore_btn)
-            
-            if not backups:
-                # Show message if no backups
+            if not backup_list:
                 self.backups_table.setRowCount(1)
                 no_backups_item = QTableWidgetItem("No backups found. Create your first backup!")
                 no_backups_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.backups_table.setItem(0, 0, no_backups_item)
                 self.backups_table.setSpan(0, 0, 1, 4)
-                
         except Exception as e:
             QMessageBox.critical(
                 self,
@@ -291,31 +302,35 @@ class BackupDialog(QDialog):
         )
         
         if reply == QMessageBox.StandardButton.Yes:
-            try:
-                self.db_manager.restore_backup(backup_path)
-                
-                QMessageBox.information(
-                    self,
-                    "Restore Complete",
-                    f"✅ Database restored successfully!\n\n"
-                    f"The application will now restart to apply changes."
-                )
-                
-                # Close dialog and signal parent to restart
-                self.accept()
-                
-            except Exception as e:
-                QMessageBox.critical(
-                    self,
-                    "Restore Error",
-                    f"Failed to restore backup:\n{str(e)}\n\n"
-                    f"Your current database has not been modified."
-                )
+                # Check if restore_backup is implemented
+                if not hasattr(self.db_manager, 'restore_backup') or not callable(getattr(self.db_manager, 'restore_backup', None)):
+                    QMessageBox.critical(
+                        self,
+                        "Restore Not Supported",
+                        "Restore backup is not supported in API client mode.\n\nPlease restore backups directly on the server or switch to local mode."
+                    )
+                    return
+                try:
+                    self.db_manager.restore_backup(backup_path)
+                    QMessageBox.information(
+                        self,
+                        "Restore Complete",
+                        f"✅ Database restored successfully!\n\n"
+                        f"The application will now restart to apply changes."
+                    )
+                    # Close dialog and signal parent to restart
+                    self.accept()
+                except Exception as e:
+                    QMessageBox.critical(
+                        self,
+                        "Restore Error",
+                        f"Failed to restore backup:\n{str(e)}\n\n"
+                        f"Your current database has not been modified."
+                    )
     
     def export_backup(self):
-        """Export a backup to a custom location."""
+        """Export a backup to a custom location (supports both local and API client modes)."""
         selected_row = self.backups_table.currentRow()
-        
         if selected_row < 0:
             QMessageBox.warning(
                 self,
@@ -323,34 +338,51 @@ class BackupDialog(QDialog):
                 "Please select a backup to export."
             )
             return
-        
-        # Get backup path
-        backups = self.db_manager.list_backups()
-        if selected_row >= len(backups):
+        # Get backup list in compatible format
+        try:
+            backups_raw = self.db_manager.list_backups()
+            backup_list = []
+            if isinstance(backups_raw, dict) and ('manual' in backups_raw or 'weekly' in backups_raw):
+                from pathlib import Path
+                import os
+                import datetime
+                for category in ('manual', 'weekly'):
+                    for path in backups_raw.get(category, []):
+                        try:
+                            stat = os.stat(path)
+                            backup_list.append({
+                                'name': Path(path).name,
+                                'created_at': datetime.datetime.fromtimestamp(stat.st_mtime),
+                                'size_mb': stat.st_size / (1024*1024),
+                                'path': path
+                            })
+                        except Exception:
+                            continue
+            elif isinstance(backups_raw, list):
+                backup_list = backups_raw
+            else:
+                backup_list = []
+        except Exception:
+            backup_list = []
+        if selected_row >= len(backup_list):
             return
-        
-        backup = backups[selected_row]
-        
-        # Open file dialog for export location
+        backup = backup_list[selected_row]
         export_path, _ = QFileDialog.getSaveFileName(
             self,
             "Export Backup",
             f"alnoor_backup_{datetime.now().strftime('%Y%m%d')}.db",
             "Database Files (*.db);;All Files (*.*)"
         )
-        
         if export_path:
             try:
                 import shutil
                 shutil.copy2(backup['path'], export_path)
-                
                 QMessageBox.information(
                     self,
                     "Export Complete",
                     f"✅ Backup exported successfully!\n\n"
                     f"Location: {export_path}"
                 )
-                
             except Exception as e:
                 QMessageBox.critical(
                     self,

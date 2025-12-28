@@ -37,6 +37,41 @@ from src.utils.model_helpers import get_attr, get_id, get_name, get_nested_attr
 
 
 class ReportsWidget(QWidget):
+
+    def export_to_csv(self, table_widget, base_filename):
+        """
+        Export the contents of a QTableWidget to a CSV file.
+        Args:
+            table_widget: The QTableWidget to export.
+            base_filename: The base name for the CSV file.
+        """
+        from PyQt6.QtWidgets import QFileDialog
+        import csv
+        from datetime import datetime
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export to CSV",
+            f"{base_filename}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            "CSV Files (*.csv)"
+        )
+        if not filename:
+            return
+        try:
+            with open(filename, mode='w', newline='', encoding='utf-8') as file:
+                writer = csv.writer(file)
+                # Write headers
+                headers = [table_widget.horizontalHeaderItem(col).text() for col in range(table_widget.columnCount())]
+                writer.writerow(headers)
+                # Write data rows
+                for row in range(table_widget.rowCount()):
+                    row_data = []
+                    for col in range(table_widget.columnCount()):
+                        item = table_widget.item(row, col)
+                        row_data.append(item.text() if item else "")
+                    writer.writerow(row_data)
+            QMessageBox.information(self, "Export Successful", f"Data exported to {filename}")
+        except Exception as e:
+            QMessageBox.critical(self, "Export Failed", f"Failed to export CSV:\n{str(e)}")
     """Widget for generating and exporting various reports."""
     
     def __init__(self, db_manager: DatabaseManager, parent=None):
@@ -62,7 +97,7 @@ class ReportsWidget(QWidget):
         self.report_tabs = QTabWidget()
         
         # Add report tabs
-        self.report_tabs.addTab(self.create_stock_report_tab(), "📦 Stock Report")
+        self.report_tabs.addTab(self.create_stock_report_tab(), "Stock Report")
         self.report_tabs.addTab(self.create_coupon_report_tab(), "🎫 Coupon Report")
         self.report_tabs.addTab(self.create_delivery_note_tab(), "📄 Delivery Notes")
         self.report_tabs.addTab(self.create_activity_report_tab(), "📅 Activity Report")
@@ -76,7 +111,7 @@ class ReportsWidget(QWidget):
         layout = QVBoxLayout(widget)
         
         # Header
-        header = QLabel("📦 Stock & Distribution Report")
+        header = QLabel("Stock & Distribution Report")
         header.setStyleSheet("font-size: 16px; font-weight: bold; color: #2c3e50;")
         layout.addWidget(header)
         
@@ -106,7 +141,7 @@ class ReportsWidget(QWidget):
         # Controls
         controls_layout = QHBoxLayout()
         
-        generate_btn = QPushButton("🔄 Generate Report")
+        generate_btn = QPushButton("Generate Report")
         generate_btn.clicked.connect(self.generate_stock_report)
         generate_btn.setStyleSheet("""
             QPushButton {
@@ -123,7 +158,7 @@ class ReportsWidget(QWidget):
         """)
         controls_layout.addWidget(generate_btn)
         
-        export_stock_btn = QPushButton("📥 Export to CSV")
+        export_stock_btn = QPushButton("Export to CSV")
         export_stock_btn.clicked.connect(lambda: self.export_to_csv(self.stock_table, "stock_report"))
         export_stock_btn.setStyleSheet("""
             QPushButton {
@@ -445,44 +480,31 @@ class ReportsWidget(QWidget):
         dialog.exec()
     
     def load_recent_delivery_notes(self):
-        """Load recent delivery notes from the database."""
+        """Load recent delivery notes from the DeliveryNote model."""
         try:
-            # Get coupons with delivery notes
-            all_coupons = self.db_manager.get_all(PatientCoupon)
-            coupons = [
-                c for c in all_coupons 
-                if c.delivery_note_number is not None
-            ]
-            # Sort by created_at desc and take first 100
-            coupons = sorted(coupons, key=lambda c: c.created_at, reverse=True)[:100]
-            
-            # Group by delivery note number
-            dn_groups = {}
-            for coupon in coupons:
-                dn_num = get_attr(coupon, 'delivery_note_number')
-                if dn_num not in dn_groups:
-                    dn_groups[dn_num] = {
-                        'coupons': [],
-                        'date': coupon.created_at,
-                        'centre': get_nested_attr(coupon, 'medical_centre.name', 'N/A'),
-                        'product': get_nested_attr(coupon, 'product.name', 'N/A')
-                    }
-                dn_groups[dn_num]['coupons'].append(coupon)
-            
-            # Populate table
+            from datetime import datetime
+            all_notes = self.db_manager.get_all(getattr(self.db_manager, 'DeliveryNote', None) or __import__('src.database.models', fromlist=['DeliveryNote']).DeliveryNote)
+            # Sort by date_created desc and take first 10
+            notes = sorted(all_notes, key=lambda n: get_attr(n, 'date_created', datetime.min), reverse=True)[:10]
             self.recent_dn_table.setRowCount(0)
-            for dn_num, data in list(dn_groups.items())[:10]:  # Show last 10
+            for note in notes:
                 row = self.recent_dn_table.rowCount()
                 self.recent_dn_table.insertRow(row)
-                
-                self.recent_dn_table.setItem(row, 0, QTableWidgetItem(dn_num))
-                self.recent_dn_table.setItem(row, 1, QTableWidgetItem(data['centre']))
-                self.recent_dn_table.setItem(row, 2, QTableWidgetItem(data['product']))
-                
-                total_pieces = sum(get_attr(c, 'quantity_pieces', 0) for c in data['coupons'])
-                self.recent_dn_table.setItem(row, 3, QTableWidgetItem(str(total_pieces)))
-                
-                date_str = data['date'].strftime("%d/%m/%Y %H:%M")
+                self.recent_dn_table.setItem(row, 0, QTableWidgetItem(get_attr(note, 'delivery_note_number', '-')))
+                self.recent_dn_table.setItem(row, 1, QTableWidgetItem(get_attr(note, 'centre_name', '-')))
+                self.recent_dn_table.setItem(row, 2, QTableWidgetItem(get_attr(note, 'product_name', '-')))
+                self.recent_dn_table.setItem(row, 3, QTableWidgetItem(str(get_attr(note, 'total_pieces', 0))))
+                date_val = get_attr(note, 'date_created', None)
+                date_str = '-'
+                if date_val:
+                    if isinstance(date_val, str):
+                        try:
+                            date_obj = datetime.fromisoformat(date_val)
+                            date_str = date_obj.strftime("%d/%m/%Y %H:%M")
+                        except Exception:
+                            date_str = date_val
+                    elif hasattr(date_val, 'strftime'):
+                        date_str = date_val.strftime("%d/%m/%Y %H:%M")
                 self.recent_dn_table.setItem(row, 4, QTableWidgetItem(date_str))
         except Exception as e:
             print(f"Error loading recent delivery notes: {e}")
@@ -680,52 +702,44 @@ class ReportsWidget(QWidget):
             
             # Section 1: Remaining Local Purchase Orders (non-empty only)
             all_pos = self.db_manager.get_all(PurchaseOrder)
-            local_pos = [po for po in all_pos if po.remaining_stock > 0]
+            from src.utils.model_helpers import get_attr, get_nested_attr
+            local_pos = [po for po in all_pos if get_attr(po, 'remaining_stock', 0) > 0]
             
             if local_pos:
-                self.add_section_header("📋 Local Purchase Orders (Remaining)")
-                
+                self.add_section_header("Local Purchase Orders (Remaining)")
                 total_lpo_qty = 0
                 total_lpo_price = 0
-                
                 for po in local_pos:
                     row = self.stock_table.rowCount()
                     self.stock_table.insertRow(row)
-                    
                     self.stock_table.setItem(row, 0, QTableWidgetItem("Local PO"))
-                    
                     item_name = f"{get_attr(po, 'po_reference', '')} - {get_nested_attr(po, 'product.name', 'N/A')}"
                     self.stock_table.setItem(row, 1, QTableWidgetItem(item_name))
-                    
-                    qty_item = QTableWidgetItem(str(po.remaining_stock))
+                    qty = get_attr(po, 'remaining_stock', 0)
+                    qty_item = QTableWidgetItem(str(qty))
                     qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     self.stock_table.setItem(row, 2, qty_item)
-                    
-                    unit_price = float(po.unit_price) if po.unit_price else 0
+                    unit_price = float(get_attr(po, 'unit_price', 0))
                     unit_price_item = QTableWidgetItem(f"{unit_price:.3f}")
                     unit_price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
                     self.stock_table.setItem(row, 3, unit_price_item)
-                    
-                    remaining_price = unit_price * po.remaining_stock
+                    remaining_price = unit_price * qty
                     price_item = QTableWidgetItem(f"{remaining_price:.3f}")
                     price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
                     self.stock_table.setItem(row, 4, price_item)
-                    
-                    notes = f"Total: {po.quantity} | Used: {po.quantity - po.remaining_stock}"
+                    notes = f"Total: {get_attr(po, 'quantity', 0)} | Used: {get_attr(po, 'quantity', 0) - qty}"
                     self.stock_table.setItem(row, 5, QTableWidgetItem(notes))
-                    
-                    total_lpo_qty += po.remaining_stock
+                    total_lpo_qty += qty
                     total_lpo_price += remaining_price
-                
                 # Add subtotal row
                 self.add_subtotal_row("Local PO Total", total_lpo_qty, total_lpo_price)
             
             # Section 2: Remaining Supplier Purchases (non-empty only)
             all_purchases = self.db_manager.get_all(Purchase)
-            supplier_purchases = [p for p in all_purchases if p.remaining_stock > 0]
+            supplier_purchases = [p for p in all_purchases if get_attr(p, 'remaining_stock', 0) > 0]
             
             if supplier_purchases:
-                self.add_section_header("🚚 Supplier Purchases (Remaining)")
+                self.add_section_header("Supplier Purchases (Remaining)")
                 
                 total_sp_qty = 0
                 total_sp_price = 0
@@ -733,33 +747,35 @@ class ReportsWidget(QWidget):
                 for purchase in supplier_purchases:
                     row = self.stock_table.rowCount()
                     self.stock_table.insertRow(row)
-                    
+
                     self.stock_table.setItem(row, 0, QTableWidgetItem("Supplier Purchase"))
-                    
+
                     item_name = f"{get_attr(purchase, 'invoice_number', '')} - {get_nested_attr(purchase, 'product.name', 'N/A')}"
                     supplier_name = get_attr(purchase, 'supplier_name', '')
                     if supplier_name:
                         item_name += f" ({supplier_name})"
                     self.stock_table.setItem(row, 1, QTableWidgetItem(item_name))
-                    
-                    qty_item = QTableWidgetItem(str(purchase.remaining_stock))
+
+                    qty = get_attr(purchase, 'remaining_stock', 0)
+                    qty_item = QTableWidgetItem(str(qty))
                     qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     self.stock_table.setItem(row, 2, qty_item)
-                    
-                    unit_price = float(purchase.unit_price)
+
+                    unit_price = float(get_attr(purchase, 'unit_price', 0))
                     unit_price_item = QTableWidgetItem(f"{unit_price:.3f}")
                     unit_price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
                     self.stock_table.setItem(row, 3, unit_price_item)
-                    
-                    remaining_price = unit_price * purchase.remaining_stock
+
+                    remaining_price = unit_price * qty
                     price_item = QTableWidgetItem(f"{remaining_price:.3f}")
                     price_item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
                     self.stock_table.setItem(row, 4, price_item)
-                    
-                    notes = f"Total: {purchase.quantity} | Used: {purchase.quantity - purchase.remaining_stock}"
+
+                    total_qty = get_attr(purchase, 'quantity', 0)
+                    notes = f"Total: {total_qty} | Used: {total_qty - qty}"
                     self.stock_table.setItem(row, 5, QTableWidgetItem(notes))
-                    
-                    total_sp_qty += purchase.remaining_stock
+
+                    total_sp_qty += qty
                     total_sp_price += remaining_price
                 
                 # Add subtotal row
@@ -769,34 +785,50 @@ class ReportsWidget(QWidget):
             all_transactions = self.db_manager.get_all(Transaction)
             transactions = [
                 t for t in all_transactions
-                if date_from_dt <= t.transaction_date <= date_to_dt
+                if (
+                    (lambda d: d if not isinstance(d, str) else datetime.fromisoformat(d))
+                    (get_attr(t, 'transaction_date')) >= date_from_dt
+                    and
+                    (lambda d: d if not isinstance(d, str) else datetime.fromisoformat(d))
+                    (get_attr(t, 'transaction_date')) <= date_to_dt
+                )
             ]
             
             if transactions:
-                self.add_section_header(f"🏥 Distributed to Pharmacies ({date_from.strftime('%d/%m/%Y')} - {date_to.strftime('%d/%m/%Y')})")
+                self.add_section_header(f"Distributed to Pharmacies ({date_from.strftime('%d/%m/%Y')} - {date_to.strftime('%d/%m/%Y')})")
                 
                 # Group by pharmacy
                 pharmacy_totals = {}
                 no_pharmacy_total = 0
                 
+                # Pre-fetch all pharmacies for lookup to avoid DetachedInstanceError
+                pharmacies = self.db_manager.get_all(Pharmacy) if hasattr(self.db_manager, 'get_all') else []
                 for txn in transactions:
                     location = get_attr(txn, 'distribution_location')
                     if location:
                         pharmacy_id = get_attr(location, 'pharmacy_id')
+                        pharmacy = None
+                        # If location is a dict (API mode), use its 'pharmacy' if present, else fetch
+                        if isinstance(location, dict):
+                            pharmacy = location.get('pharmacy')
+                            if not pharmacy and pharmacy_id:
+                                pharmacy = next((p for p in pharmacies if get_attr(p, 'id') == pharmacy_id), None)
+                                if pharmacy:
+                                    location['pharmacy'] = pharmacy
+                        else:
+                            # ORM object: do NOT access location.pharmacy directly if detached
+                            if pharmacy_id:
+                                pharmacy = next((p for p in pharmacies if get_attr(p, 'id') == pharmacy_id), None)
                         if pharmacy_id:
-                            pharmacy = get_attr(location, 'pharmacy')
                             pharmacy_name = get_name(pharmacy, f"Pharmacy ID {pharmacy_id}")
-                            
                             if pharmacy_name not in pharmacy_totals:
                                 pharmacy_totals[pharmacy_name] = {
                                     'total_qty': 0,
                                     'locations': {}
                                 }
-                            
                             loc_name = get_name(location)
                             if loc_name not in pharmacy_totals[pharmacy_name]['locations']:
                                 pharmacy_totals[pharmacy_name]['locations'][loc_name] = 0
-                            
                             pharmacy_totals[pharmacy_name]['locations'][loc_name] += get_attr(txn, 'quantity', 0)
                             pharmacy_totals[pharmacy_name]['total_qty'] += get_attr(txn, 'quantity', 0)
                         else:
@@ -865,14 +897,13 @@ class ReportsWidget(QWidget):
                 self.add_subtotal_row("Total Distributed", grand_total_qty, None)
                 
                 # Update summary label
-                summary_text = f"📊 Report Period: {date_from.strftime('%d/%m/%Y')} to {date_to.strftime('%d/%m/%Y')}"
+                summary_text = f"Report Period: {date_from.strftime('%d/%m/%Y')} to {date_to.strftime('%d/%m/%Y')}"
                 if local_pos:
                     summary_text += f" | Local PO Remaining: {total_lpo_qty} units (BHD {total_lpo_price:.3f})"
                 if supplier_purchases:
                     summary_text += f" | Supplier Stock Remaining: {total_sp_qty} units (BHD {total_sp_price:.3f})"
                 if transactions:
                     summary_text += f" | Distributed: {grand_total_qty} units"
-                
                 self.stock_summary_label.setText(summary_text)
                 
         except Exception as e:
@@ -884,16 +915,13 @@ class ReportsWidget(QWidget):
         """Add a section header row to the table."""
         row = self.stock_table.rowCount()
         self.stock_table.insertRow(row)
-        
         header_item = QTableWidgetItem(title)
         font = header_item.font()
         font.setBold(True)
         font.setPointSize(11)
         header_item.setFont(font)
         header_item.setBackground(QColor("#d3d3d3"))
-        
         self.stock_table.setItem(row, 0, header_item)
-        
         # Merge cells for header (now 6 columns)
         for col in range(1, 6):
             empty_item = QTableWidgetItem("")
@@ -965,92 +993,115 @@ class ReportsWidget(QWidget):
             
             # Apply filters
             filtered_coupons = []
+            from src.utils.model_helpers import get_attr
             for coupon in all_coupons:
-                # Date filter - use date_received instead of created_at
-                coupon_date = coupon.date_received.date() if coupon.date_received else coupon.created_at.date()
-                if coupon_date < date_from or coupon_date > date_to:
+                # Date filter - use get_attr for compatibility
+                date_val = get_attr(coupon, 'date_received') or get_attr(coupon, 'created_at')
+                coupon_date = None
+                import datetime as dt
+                if isinstance(date_val, dt.datetime):
+                    coupon_date = date_val.date()
+                elif isinstance(date_val, str):
+                    try:
+                        coupon_date = dt.datetime.fromisoformat(date_val).date()
+                    except Exception:
+                        continue
+                if coupon_date is None or coupon_date < date_from or coupon_date > date_to:
                     continue
-                
+
                 # Status filter
-                if status_filter == "Verified" and not coupon.verified:
+                verified = get_attr(coupon, 'verified', False)
+                if status_filter == "Verified" and not verified:
                     continue
-                elif status_filter == "Pending" and coupon.verified:
+                elif status_filter == "Pending" and verified:
                     continue
-                
+
                 # Product filter
-                if product_id and coupon.product_id != product_id:
+                coupon_product_id = get_attr(coupon, 'product_id', None)
+                if product_id and coupon_product_id != product_id:
                     continue
-                
+
                 # Medical Centre filter
-                if medical_centre_id and coupon.medical_centre_id != medical_centre_id:
+                coupon_centre_id = get_attr(coupon, 'medical_centre_id', None)
+                if medical_centre_id and coupon_centre_id != medical_centre_id:
                     continue
-                
+
                 # Distribution Location filter
-                if distribution_id and coupon.distribution_location_id != distribution_id:
+                coupon_location_id = get_attr(coupon, 'distribution_location_id', None)
+                if distribution_id and coupon_location_id != distribution_id:
                     continue
-                
+
                 filtered_coupons.append(coupon)
             
             # Populate table
             self.coupon_table.setRowCount(0)
             
-            verified_count = sum(1 for c in filtered_coupons if c.verified)
+            verified_count = sum(1 for c in filtered_coupons if get_attr(c, 'verified', False))
             pending_count = len(filtered_coupons) - verified_count
-            total_quantity = sum(c.quantity_pieces for c in filtered_coupons)
-            
+            total_quantity = sum(get_attr(c, 'quantity_pieces', 0) for c in filtered_coupons)
+
             self.coupon_summary_label.setText(
-                f"📊 Report Summary: {len(filtered_coupons)} coupons | "
-                f"✅ Verified: {verified_count} | "
-                f"⏳ Pending: {pending_count} | "
-                f"📦 Total Quantity: {total_quantity} pieces"
+                f"Report Summary: {len(filtered_coupons)} coupons | "
+                f"Verified: {verified_count} | "
+                f"Pending: {pending_count} | "
+                f"Total Quantity: {total_quantity} pieces"
             )
-            
+
             for coupon in filtered_coupons:
                 row = self.coupon_table.rowCount()
                 self.coupon_table.insertRow(row)
-                
-                # Date - use date_received (date only, no timestamp)
-                coupon_date = coupon.date_received if coupon.date_received else coupon.created_at
-                self.coupon_table.setItem(row, 0, QTableWidgetItem(
-                    coupon_date.strftime("%Y-%m-%d")
-                ))
-                
+
+                # Date - use get_attr for compatibility
+                date_val = get_attr(coupon, 'date_received') or get_attr(coupon, 'created_at')
+                coupon_date = None
+                import datetime as dt
+                if isinstance(date_val, dt.datetime):
+                    coupon_date = date_val
+                elif isinstance(date_val, str):
+                    try:
+                        coupon_date = dt.datetime.fromisoformat(date_val)
+                    except Exception:
+                        coupon_date = None
+                date_str = coupon_date.strftime("%Y-%m-%d") if coupon_date else "-"
+                self.coupon_table.setItem(row, 0, QTableWidgetItem(date_str))
+
                 # Patient
                 self.coupon_table.setItem(row, 1, QTableWidgetItem(get_attr(coupon, 'patient_name', '')))
-                
+
                 # CPR
                 self.coupon_table.setItem(row, 2, QTableWidgetItem(get_attr(coupon, 'cpr', '')))
-                
+
                 # Product
                 product_name = get_nested_attr(coupon, 'product.name', 'Unknown')
                 self.coupon_table.setItem(row, 3, QTableWidgetItem(product_name))
-                
+
                 # Quantity
                 quantity_item = QTableWidgetItem(f"{get_attr(coupon, 'quantity_pieces', 0)} pcs")
                 quantity_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.coupon_table.setItem(row, 4, quantity_item)
-                
+
                 # Medical Centre
                 centre_name = get_nested_attr(coupon, 'medical_centre.name', 'Unknown')
                 self.coupon_table.setItem(row, 5, QTableWidgetItem(centre_name))
-                
+
                 # Distribution Location
                 location_name = get_nested_attr(coupon, 'distribution_location.name', 'Unknown')
                 self.coupon_table.setItem(row, 6, QTableWidgetItem(location_name))
-                
+
                 # Status
-                status_item = QTableWidgetItem("✅ Verified" if coupon.verified else "⏳ Pending")
+                verified = get_attr(coupon, 'verified', False)
+                status_item = QTableWidgetItem("✅ Verified" if verified else "⏳ Pending")
                 status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                if coupon.verified:
+                if verified:
                     status_item.setBackground(QColor("#d4edda"))
                     status_item.setForeground(QColor("#155724"))
                 else:
                     status_item.setBackground(QColor("#fff3cd"))
                     status_item.setForeground(QColor("#856404"))
                 self.coupon_table.setItem(row, 7, status_item)
-                
+
                 # Verification Reference
-                ver_ref = coupon.verification_reference if coupon.verified else "-"
+                ver_ref = get_attr(coupon, 'verification_reference', '-') if verified else "-"
                 self.coupon_table.setItem(row, 8, QTableWidgetItem(ver_ref))
             
         except Exception as e:
@@ -1061,37 +1112,62 @@ class ReportsWidget(QWidget):
         try:
             date_from = self.activity_date_from.date().toPyDate()
             date_to = self.activity_date_to.date().toPyDate()
-            
+
             # Get all coupons (main activity)
             all_coupons = self.db_manager.get_all(PatientCoupon)
-            
+
             # Filter by date
             activities = []
+            from src.utils.model_helpers import get_attr, get_nested_attr
             for coupon in all_coupons:
-                if date_from <= coupon.created_at.date() <= date_to:
+                created_at = get_attr(coupon, 'created_at')
+                # Parse created_at if it's a string
+                if isinstance(created_at, str):
+                    try:
+                        import datetime as dt
+                        created_at = dt.datetime.fromisoformat(created_at)
+                    except Exception:
+                        continue
+                if not created_at:
+                    continue
+                if hasattr(created_at, 'date') and date_from <= created_at.date() <= date_to:
+                    verified = get_attr(coupon, 'verified', False)
+                    # Robust product name resolution
+                    product = get_attr(coupon, 'product', None)
+                    product_name = None
+                    if product:
+                        product_name = get_name(product)
+                    if not product_name or product_name == 'Unknown':
+                        product_name = get_nested_attr(coupon, 'product.name', None)
+                    if not product_name or product_name == 'Unknown':
+                        product_id = get_attr(coupon, 'product_id', None)
+                        if product_id:
+                            product_name = f"Product ID {product_id}"
+                        else:
+                            product_name = 'Unknown'
                     activities.append({
-                        'datetime': coupon.created_at,
+                        'datetime': created_at,
                         'type': 'Coupon',
                         'entity': get_attr(coupon, 'patient_name', ''),
-                        'action': 'Verified' if coupon.verified else 'Created',
-                        'details': f"{get_nested_attr(coupon, 'product.name', 'Unknown')} - {get_attr(coupon, 'quantity_pieces', 0)} pcs"
+                        'action': 'Verified' if verified else 'Created',
+                        'details': f"{product_name} - {get_attr(coupon, 'quantity_pieces', 0)} pcs"
                     })
-            
+
             # Sort by datetime (newest first)
             activities.sort(key=lambda x: x['datetime'], reverse=True)
-            
+
             # Populate table
             self.activity_table.setRowCount(0)
-            
+
             self.activity_summary_label.setText(
                 f"📊 Activity Summary: {len(activities)} activities between "
                 f"{date_from.strftime('%Y-%m-%d')} and {date_to.strftime('%Y-%m-%d')}"
             )
-            
+
             for activity in activities:
                 row = self.activity_table.rowCount()
                 self.activity_table.insertRow(row)
-                
+
                 self.activity_table.setItem(row, 0, QTableWidgetItem(
                     activity['datetime'].strftime("%Y-%m-%d %H:%M:%S")
                 ))
@@ -1099,7 +1175,7 @@ class ReportsWidget(QWidget):
                 self.activity_table.setItem(row, 2, QTableWidgetItem(activity['entity']))
                 self.activity_table.setItem(row, 3, QTableWidgetItem(activity['action']))
                 self.activity_table.setItem(row, 4, QTableWidgetItem(activity['details']))
-            
+
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to generate activity report:\n{str(e)}")
     
@@ -1111,118 +1187,63 @@ class ReportsWidget(QWidget):
                 item = self.summary_layout.takeAt(0)
                 if item.widget():
                     item.widget().deleteLater()
-            
-            # Get all data
+
+            # Get all data using db_manager.get_all (works for both ORM and API)
             products = self.db_manager.get_all(Product)
             purchase_orders = self.db_manager.get_all(PurchaseOrder)
             coupons = self.db_manager.get_all(PatientCoupon)
             centres = self.db_manager.get_all(MedicalCentre)
             locations = self.db_manager.get_all(DistributionLocation)
-            stock_summary = self.stock_service.get_stock_summary()
-            
-            # Calculate statistics
-            verified_coupons = [c for c in coupons if c.verified]
-            pending_coupons = [c for c in coupons if not c.verified]
-            
-            total_ordered = sum(po.quantity for po in purchase_orders)
-            total_remaining = sum(po.remaining_stock for po in purchase_orders)
+            # stock_summary = self.stock_service.get_stock_summary() if hasattr(self, 'stock_service') else None
+
+            from src.utils.model_helpers import get_attr
+
+            # Calculate statistics using get_attr for compatibility
+            verified_coupons = [c for c in coupons if get_attr(c, 'verified', False)]
+            pending_coupons = [c for c in coupons if not get_attr(c, 'verified', False)]
+
+            total_ordered = sum(get_attr(po, 'quantity', 0) for po in purchase_orders)
+            total_remaining = sum(get_attr(po, 'remaining_stock', 0) for po in purchase_orders)
             total_used = total_ordered - total_remaining
-            
-            total_coupon_quantity = sum(c.quantity_pieces for c in coupons)
-            verified_quantity = sum(c.quantity_pieces for c in verified_coupons)
-            
+
+            total_coupon_quantity = sum(get_attr(c, 'quantity_pieces', 0) for c in coupons)
+            verified_quantity = sum(get_attr(c, 'quantity_pieces', 0) for c in verified_coupons)
+
+            # Avoid division by zero
+            percent_remaining = (total_remaining/total_ordered*100) if total_ordered else 0
+            percent_used = (total_used/total_ordered*100) if total_ordered else 0
+            percent_verified = (len(verified_coupons)/len(coupons)*100) if coupons else 0
+            percent_pending = (len(pending_coupons)/len(coupons)*100) if coupons else 0
+            avg_quantity_per_coupon = (total_coupon_quantity/len(coupons)) if coupons else 0
+
             # Create summary display
             summary_html = f"""
-            <h2 style="color: #2c3e50; margin-bottom: 20px;">📊 System Summary Statistics</h2>
-            
-            <h3 style="color: #3498db; margin-top: 20px;">🏢 System Entities</h3>
+            <h2 style=\"color: #2c3e50; margin-bottom: 20px;\">📊 System Summary Statistics</h2>
+            <h3 style=\"color: #3498db; margin-top: 20px;\">🏢 System Entities</h3>
             <p><strong>Products:</strong> {len(products)}</p>
             <p><strong>Purchase Orders:</strong> {len(purchase_orders)}</p>
             <p><strong>Medical Centres:</strong> {len(centres)}</p>
             <p><strong>Distribution Locations:</strong> {len(locations)}</p>
-            
-            <h3 style="color: #3498db; margin-top: 20px;">📦 Stock Statistics</h3>
+            <h3 style=\"color: #3498db; margin-top: 20px;\">📦 Stock Statistics</h3>
             <p><strong>Total Ordered:</strong> {total_ordered:,} pieces</p>
-            <p><strong>Remaining Stock:</strong> {total_remaining:,} pieces ({(total_remaining/total_ordered*100):.1f}%)</p>
-            <p><strong>Used Stock:</strong> {total_used:,} pieces ({(total_used/total_ordered*100):.1f}%)</p>
-            
-            <h3 style="color: #3498db; margin-top: 20px;">🎫 Coupon Statistics</h3>
+            <p><strong>Remaining Stock:</strong> {total_remaining:,} pieces ({percent_remaining:.1f}%)</p>
+            <p><strong>Used Stock:</strong> {total_used:,} pieces ({percent_used:.1f}%)</p>
+            <h3 style=\"color: #3498db; margin-top: 20px;\">🎫 Coupon Statistics</h3>
             <p><strong>Total Coupons:</strong> {len(coupons)}</p>
-            <p><strong>Verified:</strong> {len(verified_coupons)} ({(len(verified_coupons)/len(coupons)*100):.1f}%)</p>
-            <p><strong>Pending:</strong> {len(pending_coupons)} ({(len(pending_coupons)/len(coupons)*100):.1f}%)</p>
+            <p><strong>Verified:</strong> {len(verified_coupons)} ({percent_verified:.1f}%)</p>
+            <p><strong>Pending:</strong> {len(pending_coupons)} ({percent_pending:.1f}%)</p>
             <p><strong>Total Distributed Quantity:</strong> {verified_quantity:,} pieces</p>
-            
-            <h3 style="color: #3498db; margin-top: 20px;">📈 Performance Metrics</h3>
-            <p><strong>Stock Utilization Rate:</strong> {(total_used/total_ordered*100):.1f}%</p>
-            <p><strong>Verification Rate:</strong> {(len(verified_coupons)/len(coupons)*100):.1f}%</p>
-            <p><strong>Average Quantity per Coupon:</strong> {(total_coupon_quantity/len(coupons)):.1f} pieces</p>
+            <h3 style=\"color: #3498db; margin-top: 20px;\">📈 Performance Metrics</h3>
+            <p><strong>Stock Utilization Rate:</strong> {percent_used:.1f}%</p>
+            <p><strong>Verification Rate:</strong> {percent_verified:.1f}%</p>
+            <p><strong>Average Quantity per Coupon:</strong> {avg_quantity_per_coupon:.1f} pieces</p>
             """
-            
+
             summary_label = QLabel(summary_html)
             summary_label.setWordWrap(True)
             summary_label.setTextFormat(Qt.TextFormat.RichText)
             summary_label.setStyleSheet("padding: 10px;")
             self.summary_layout.addWidget(summary_label)
-            
+
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to generate summary report:\n{str(e)}")
-    
-    def export_to_csv(self, table: QTableWidget, report_name: str):
-        """Export table data to CSV file."""
-        if table.rowCount() == 0:
-            QMessageBox.warning(self, "No Data", "No data available to export.\nPlease generate a report first.")
-            return
-        
-        try:
-            # Get file path from user
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            default_filename = f"{report_name}_{timestamp}.csv"
-            
-            file_path, _ = QFileDialog.getSaveFileName(
-                self,
-                "Export to CSV",
-                str(Path.home() / "Downloads" / default_filename),
-                "CSV Files (*.csv)"
-            )
-            
-            if not file_path:
-                return
-            
-            # Write CSV
-            with open(file_path, 'w', encoding='utf-8') as f:
-                # Write header
-                headers = []
-                for col in range(table.columnCount()):
-                    headers.append(table.horizontalHeaderItem(col).text())
-                f.write(','.join(f'"{h}"' for h in headers) + '\n')
-                
-                # Write data
-                for row in range(table.rowCount()):
-                    row_data = []
-                    for col in range(table.columnCount()):
-                        item = table.item(row, col)
-                        if item:
-                            # Clean up data (remove emojis for CSV)
-                            text = item.text().replace('✅', 'Verified').replace('⏳', 'Pending')
-                            row_data.append(f'"{text}"')
-                        else:
-                            row_data.append('""')
-                    f.write(','.join(row_data) + '\n')
-                
-                # Add summary for coupon report
-                if report_name == "coupon_report" and hasattr(self, 'coupon_summary_label'):
-                    summary_text = self.coupon_summary_label.text()
-                    # Remove emojis for CSV
-                    summary_text = summary_text.replace('📊', '').replace('✅', '').replace('⏳', '').replace('📦', '')
-                    f.write('\n')
-                    f.write(f'"{summary_text}"\n')
-            
-            QMessageBox.information(
-                self,
-                "Export Successful",
-                f"Report exported successfully to:\n{file_path}\n\n"
-                f"Total rows: {table.rowCount()}"
-            )
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Export Error", f"Failed to export report:\n{str(e)}")

@@ -74,6 +74,7 @@ class VerifyCouponDialog(QDialog):
         coupons_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #2c3e50; margin-top: 10px;")
         layout.addWidget(coupons_label)
         
+        from PyQt6.QtWidgets import QScrollArea, QWidget
         self.coupons_table = QTableWidget()
         self.coupons_table.setColumnCount(5)
         self.coupons_table.setHorizontalHeaderLabels([
@@ -82,8 +83,16 @@ class VerifyCouponDialog(QDialog):
         self.coupons_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.coupons_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.coupons_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.coupons_table.setMaximumHeight(200)
-        layout.addWidget(self.coupons_table)
+        self.coupons_table.setMinimumHeight(150)
+        self.coupons_table.setMaximumHeight(350)
+        self.coupons_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        # Wrap the table in a scroll area for better UX with many coupons
+        table_scroll = QScrollArea()
+        table_scroll.setWidgetResizable(True)
+        table_scroll.setWidget(self.coupons_table)
+        table_scroll.setMinimumHeight(180)
+        table_scroll.setMaximumHeight(400)
+        layout.addWidget(table_scroll)
         
         layout.addSpacing(15)
         
@@ -208,23 +217,57 @@ class VerifyCouponDialog(QDialog):
     def load_coupon_details(self):
         """Load coupon details into the table."""
         self.coupons_table.setRowCount(len(self.coupons))
-        
+
+        # Build a product lookup for fallback
+        try:
+            all_products = self.db_manager.get_all(getattr(self.db_manager, 'Product', PatientCoupon).product.__class__)
+        except Exception:
+            all_products = self.db_manager.get_all(PatientCoupon)
+        product_lookup = {}
+        for p in self.db_manager.get_all(PatientCoupon):
+            pid = get_attr(p, 'id', None)
+            name = get_attr(p, 'name', None)
+            if pid and name:
+                product_lookup[pid] = name
+
+        # Try to get all products from db_manager if possible
+        try:
+            from src.database.models import Product
+            products = self.db_manager.get_all(Product)
+            product_name_lookup = {get_attr(prod, 'id', None): get_attr(prod, 'name', 'Unknown') for prod in products}
+        except Exception:
+            product_name_lookup = {}
+
         for row, coupon in enumerate(self.coupons):
             # Coupon Reference
-            self.coupons_table.setItem(row, 0, QTableWidgetItem(coupon.coupon_reference))
-            
+            ref = get_attr(coupon, 'coupon_reference', '-')
+            self.coupons_table.setItem(row, 0, QTableWidgetItem(ref))
+
             # Patient Name
-            self.coupons_table.setItem(row, 1, QTableWidgetItem(coupon.patient_name or "N/A"))
-            
+            patient_name = get_attr(coupon, 'patient_name', None) or "N/A"
+            self.coupons_table.setItem(row, 1, QTableWidgetItem(patient_name))
+
             # CPR
-            self.coupons_table.setItem(row, 2, QTableWidgetItem(coupon.cpr or "N/A"))
-            
+            cpr = get_attr(coupon, 'cpr', None) or "N/A"
+            self.coupons_table.setItem(row, 2, QTableWidgetItem(cpr))
+
             # Product
-            product_name = coupon.product.name if coupon.product else "Unknown"
+            product = get_attr(coupon, 'product', None)
+            product_name = None
+            if product:
+                product_name = get_attr(product, 'name', None)
+            if not product_name:
+                # Try to resolve from product_id
+                product_id = get_attr(coupon, 'product_id', None)
+                if product_id and product_id in product_name_lookup:
+                    product_name = product_name_lookup[product_id]
+            if not product_name:
+                product_name = "Unknown"
             self.coupons_table.setItem(row, 3, QTableWidgetItem(product_name))
-            
+
             # Quantity
-            qty_item = QTableWidgetItem(f"{coupon.quantity_pieces} pieces")
+            qty = get_attr(coupon, 'quantity_pieces', 0)
+            qty_item = QTableWidgetItem(f"{qty} pieces")
             qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.coupons_table.setItem(row, 4, qty_item)
     
@@ -258,21 +301,27 @@ class VerifyCouponDialog(QDialog):
         dn_date = self.dn_date_input.date().toPyDate()
         dn_date_dt = datetime.combine(dn_date, datetime.min.time())
         
-        # Build confirmation message
+        # Build summarized confirmation message for large coupon sets
+        total_quantity = sum(get_attr(c, 'quantity_pieces', 0) for c in self.coupons)
+        max_preview = 5
+        preview_coupons = self.coupons[:max_preview]
         coupon_list = "\n".join([
-            f"  • {c.patient_name or 'N/A'} ({c.cpr or 'N/A'}) - {c.product.name if c.product else 'Unknown'} - {c.quantity_pieces} pieces"
-            for c in self.coupons
+            f"  • {get_attr(c, 'patient_name', 'N/A') or 'N/A'} "
+            f"({get_attr(c, 'cpr', 'N/A') or 'N/A'}) - "
+            f"{get_attr(get_attr(c, 'product', None), 'name', 'Unknown') if get_attr(c, 'product', None) else 'Unknown'} - "
+            f"{get_attr(c, 'quantity_pieces', 0)} pieces"
+            for c in preview_coupons
         ])
-        
-        total_quantity = sum(c.quantity_pieces for c in self.coupons)
-        
+        if len(self.coupons) > max_preview:
+            coupon_list += f"\n  ...and {len(self.coupons) - max_preview} more coupon(s)"
+
         reply = QMessageBox.question(
             self,
             "Confirm Delivery Verification",
             f"Are you sure you want to confirm delivery for {len(self.coupons)} coupon(s)?\n\n"
             f"Verification Reference: {verification_ref}\n"
             f"Delivery Note: {delivery_note}\n\n"
-            f"Coupons:\n{coupon_list}\n\n"
+            f"Coupons (showing first {max_preview}):\n{coupon_list}\n\n"
             f"Total Quantity: {total_quantity} pieces\n\n"
             f"Note: This only confirms delivery. Stock is managed separately through transactions.\n"
             f"This action cannot be undone except by deleting the coupons.",
@@ -300,21 +349,29 @@ class VerifyCouponDialog(QDialog):
                     if not db_coupon:
                         failed_coupons.append(f"{get_id(coupon)}: Coupon not found in database")
                         continue
-                    
-                    # Update coupon via db_manager
-                    self.db_manager.update(PatientCoupon, get_id(db_coupon), {
+
+                    # Prepare update payload
+                    update_fields = {
                         'verified': True,
                         'verification_reference': verification_ref,
                         'delivery_note_number': delivery_note,
                         'date_verified': datetime.now()
-                    })
-                    
+                    }
+
+                    # For API mode (DatabaseClient), update expects a record/dict with id and updated fields
+                    if hasattr(self.db_manager, 'server_url'):
+                        # Merge db_coupon (dict or ORM) with update_fields
+                        record = dict(db_coupon) if isinstance(db_coupon, dict) else {k: v for k, v in db_coupon.__dict__.items() if not k.startswith('_')}
+                        record.update(update_fields)
+                        self.db_manager.update(record)
+                    else:
+                        # Local DB mode
+                        self.db_manager.update(PatientCoupon, get_id(db_coupon), update_fields)
+
                     verified_count += 1
-                    
+
                 except Exception as e:
                     failed_coupons.append(f"{get_id(coupon)}: {str(e)}")
-                
-                # Commit happens automatically when exiting the context manager
             
             # Show results
             if verified_count == len(self.coupons):

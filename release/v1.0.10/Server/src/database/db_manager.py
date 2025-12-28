@@ -212,6 +212,10 @@ class DatabaseManager:
             echo=False,  # Set to True for SQL query debugging
             future=True,
             pool_pre_ping=True,
+            pool_size=10,           # Increase pool size
+            max_overflow=20,        # Allow more overflow
+            pool_timeout=10,        # Lower timeout for faster recovery
+            pool_recycle=60,        # Recycle connections every 60s
             connect_args={
                 'timeout': 60,  # 60 second timeout for locked database (network stability)
                 'check_same_thread': False,  # Allow multi-threaded access

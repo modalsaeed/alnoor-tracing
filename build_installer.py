@@ -130,7 +130,10 @@ def validate_environment():
         "sqlalchemy": "sqlalchemy",
         "pandas": "pandas",
         "openpyxl": "openpyxl",
-        "pyinstaller": "PyInstaller"  # Package name vs import name differ
+        "pyinstaller": "PyInstaller",  # Package name vs import name differ
+        "flask": "flask",
+        "flask-cors": "flask_cors",
+        "waitress": "waitress"
     }
     missing_packages = []
     
@@ -143,6 +146,16 @@ def validate_environment():
             print(f"      {Colors.GRAY}- {package_name}{Colors.RESET} {Colors.SUCCESS}[OK]{Colors.RESET}")
         else:
             missing_packages.append(package_name)
+    
+    # Standard library modules for backup and scheduling
+    stdlib_modules = ["shutil", "threading", "time", "datetime", "os", "pathlib"]
+    for mod in stdlib_modules:
+        try:
+            __import__(mod)
+            print(f"      {Colors.GRAY}- {mod} (stdlib){Colors.RESET} {Colors.SUCCESS}[OK]{Colors.RESET}")
+        except ImportError:
+            print_error(f"Missing standard library module: {mod}")
+            return False
     
     if missing_packages:
         print_error(f"Missing packages: {', '.join(missing_packages)}")

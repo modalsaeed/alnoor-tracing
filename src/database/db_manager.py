@@ -31,6 +31,7 @@ from .models import (
     PatientCoupon,
     Transaction,
     ActivityLog,
+    DeliveryNote,
 )
 
 # Type variable for generic operations
@@ -100,6 +101,97 @@ def get_database_instance(db_path: Optional[str] = None):
 
 
 class DatabaseManager:
+
+    def create(self, model_class, data_dict):
+        """
+        Create a new record from a dict of fields, for compatibility with API client signature.
+        Args:
+            model_class: The ORM model class to create.
+            data_dict: Dict of field values.
+        Returns:
+            The created ORM object.
+        """
+        with self.get_session() as session:
+            record = model_class(**data_dict)
+            session.add(record)
+            session.flush()
+            session.refresh(record)
+            session.commit()  # Ensure changes are committed to DB
+            self.log_activity(
+                'CREATE',
+                getattr(model_class, '__tablename__', str(model_class)),
+                getattr(record, 'id', 0),
+                f'Created new {model_class.__name__} (ID: {getattr(record, "id", 0)})',
+            )
+            return record
+            self.log_activity(
+                'CREATE',
+                getattr(model_class, '__tablename__', str(model_class)),
+                getattr(record, 'id', 0),
+                f'Created new {model_class.__name__} (ID: {getattr(record, "id", 0)})',
+            )
+            return record
+    def create_patient_coupons_batch(self, coupons: list) -> dict:
+        """
+        Bulk insert multiple patient coupons.
+        Args:
+            coupons: List of dicts with coupon fields (coupon_reference, patient_name, etc.)
+        Returns:
+            Dict with 'success' and 'created' keys, and 'errors' if any failures.
+        """
+        created = []
+        errors = []
+        with self.get_session() as session:
+            for idx, coupon_data in enumerate(coupons):
+                try:
+                    # Defensive: ensure required fields
+                    coupon_reference = coupon_data.get('coupon_reference')
+                    if not coupon_reference:
+                        raise ValueError('Missing coupon_reference')
+                    # Convert date fields if present
+                    date_received = coupon_data.get('date_received')
+                    if date_received and isinstance(date_received, str):
+                        try:
+                            date_received = datetime.fromisoformat(date_received)
+                        except Exception:
+                            date_received = None
+                    date_verified = coupon_data.get('date_verified')
+                    if date_verified and isinstance(date_verified, str):
+                        try:
+                            date_verified = datetime.fromisoformat(date_verified)
+                        except Exception:
+                            date_verified = None
+                    # Create PatientCoupon instance
+                    coupon = PatientCoupon(
+                        coupon_reference=coupon_reference,
+                        patient_name=coupon_data.get('patient_name'),
+                        cpr=coupon_data.get('cpr'),
+                        quantity_pieces=coupon_data.get('quantity_pieces', 1),
+                        medical_centre_id=coupon_data.get('medical_centre_id'),
+                        distribution_location_id=coupon_data.get('distribution_location_id'),
+                        product_id=coupon_data.get('product_id'),
+                        verified=coupon_data.get('verified', False),
+                        verification_reference=coupon_data.get('verification_reference'),
+                        delivery_note_number=coupon_data.get('delivery_note_number'),
+                        grv_reference=coupon_data.get('grv_reference'),
+                        date_received=date_received,
+                        date_verified=date_verified,
+                        notes=coupon_data.get('notes'),
+                    )
+                    session.add(coupon)
+                    session.flush()
+                    created.append({
+                        'id': coupon.id,
+                        'coupon_reference': coupon.coupon_reference
+                    })
+                except Exception as e:
+                    errors.append({'index': idx, 'error': str(e), 'data': coupon_data})
+            # No explicit session.commit() needed; context manager handles commit/rollback
+        result = {'success': len(errors) == 0, 'created': created}
+        if errors:
+            result['errors'] = errors
+        return result
+
     """
     Manages database connections and operations.
     Singleton pattern to ensure single database instance.
@@ -185,6 +277,9 @@ class DatabaseManager:
         self._engine = create_engine(
             f'sqlite:///{self.db_path}',
             echo=False,  # Set to True for SQL query debugging
+            pool_size=20,           # Increased from default 5
+            max_overflow=40,        # Increased from default 10
+            pool_timeout=10,        # Lower timeout for faster error recovery
             future=True,
             pool_pre_ping=True,
             connect_args={
@@ -571,6 +666,7 @@ class DatabaseManager:
     # Generic CRUD operations
     
     def get_all(self, model_class: Type[T]) -> List[T]:
+
         """Get all records of a model."""
         with self.get_session() as session:
             query = session.query(model_class)
@@ -578,13 +674,25 @@ class DatabaseManager:
             # Eagerly load relationships to avoid lazy loading issues
             if model_class == PurchaseOrder:
                 query = query.options(joinedload(PurchaseOrder.product))
+            elif model_class == Purchase:
+                query = query.options(
+                    joinedload(Purchase.purchase_order),
+                    joinedload(Purchase.product)
+                )
+            elif model_class == Transaction:
+                query = query.options(
+                    joinedload(Transaction.product),
+                    joinedload(Transaction.purchase),
+                    joinedload(Transaction.distribution_location)
+                )
+            elif model_class == DistributionLocation:
+                query = query.options(joinedload(DistributionLocation.pharmacy))
             elif model_class == PatientCoupon:
                 query = query.options(
                     joinedload(PatientCoupon.product),
                     joinedload(PatientCoupon.medical_centre),
                     joinedload(PatientCoupon.distribution_location)
                 )
-            
             return query.all()
     
     def get_by_id(self, model_class: Type[T], record_id: int) -> Optional[T]:
@@ -609,21 +717,45 @@ class DatabaseManager:
         
         return record
     
-    def update(self, record: T) -> T:
-        """Update an existing record."""
-        with self.get_session() as session:
-            session.merge(record)
-            session.flush()
-        
-        # Log activity
-        self.log_activity(
-            'UPDATE',
-            record.__tablename__,
-            record.id,
-            f'Updated {record.__class__.__name__} (ID: {record.id})',
-        )
-        
-        return record
+    def update(self, *args, **kwargs):
+        """
+        Update an existing record.
+        Supports both (record) and (model_class, record_id, update_fields) signatures for compatibility.
+        """
+        # Signature: update(record)
+        if len(args) == 1 and not kwargs:
+            record = args[0]
+            with self.get_session() as session:
+                session.merge(record)
+                session.flush()
+            # Log activity
+            self.log_activity(
+                'UPDATE',
+                record.__tablename__,
+                record.id,
+                f'Updated {record.__class__.__name__} (ID: {record.id})',
+            )
+            return record
+        # Signature: update(model_class, record_id, update_fields)
+        elif len(args) == 3 and isinstance(args[2], dict):
+            model_class, record_id, update_fields = args
+            with self.get_session() as session:
+                record = session.query(model_class).filter(model_class.id == record_id).first()
+                if not record:
+                    raise ValueError(f"Record with id {record_id} not found.")
+                for k, v in update_fields.items():
+                    setattr(record, k, v)
+                session.flush()
+            # Log activity
+            self.log_activity(
+                'UPDATE',
+                getattr(model_class, '__tablename__', str(model_class)),
+                record_id,
+                f'Updated {model_class.__name__} (ID: {record_id})',
+            )
+            return record
+        else:
+            raise TypeError("update() must be called as update(record) or update(model_class, record_id, update_fields: dict)")
     
     def delete(self, model_class: Type[T], record_id: int) -> bool:
         """Delete a record by ID."""

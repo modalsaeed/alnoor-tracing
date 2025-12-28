@@ -111,14 +111,16 @@ class DNcopiesReportDialog(QDialog):
     def load_po_data(self):
         """Load purchase orders for selection."""
         try:
-            with self.db_manager.get_session() as session:
-                pos = session.query(PurchaseOrder).order_by(PurchaseOrder.po_reference).all()
-                self.po_combo.addItem("-- Select PO Reference --", None)
-                for po in pos:
-                    display_text = f"{po.po_reference}"
-                    if po.product:
-                        display_text += f" ({po.product.name})"
-                    self.po_combo.addItem(display_text, po.id)
+            pos = self.db_manager.get_all(PurchaseOrder)
+            pos = sorted(pos, key=lambda po: get_attr(po, 'po_reference', ''))
+            self.po_combo.addItem("-- Select PO Reference --", None)
+            for po in pos:
+                display_text = f"{get_attr(po, 'po_reference', '')}"
+                product = get_attr(po, 'product', None)
+                product_name = get_attr(product, 'name', '') if product else ''
+                if product_name:
+                    display_text += f" ({product_name})"
+                self.po_combo.addItem(display_text, get_id(po))
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load PO data: {str(e)}")
     
@@ -136,93 +138,114 @@ class DNcopiesReportDialog(QDialog):
         grv_filter = self.grv_filter.isChecked()
         
         try:
-            with self.db_manager.get_session() as session:
-                # Get PO reference
-                po = session.query(PurchaseOrder).get(po_id)
-                if not po:
-                    QMessageBox.warning(self, "Error", "Selected PO not found.")
-                    return
-                po_reference = po.po_reference
-                
-                # Query coupons with delivery note numbers
-                query = session.query(PatientCoupon).filter(
-                    PatientCoupon.delivery_note_number.isnot(None),
-                    PatientCoupon.delivery_note_number != "",
-                    PatientCoupon.date_received.isnot(None)
-                )
-                
-                # Apply date filter
-                from datetime import datetime
-                date_from_dt = datetime.combine(date_from, datetime.min.time())
-                date_to_dt = datetime.combine(date_to, datetime.max.time())
-                query = query.filter(
-                    PatientCoupon.date_received >= date_from_dt,
-                    PatientCoupon.date_received <= date_to_dt
-                )
-                
-                # Apply GRV filter if checked
+            from datetime import datetime as dt
+            # Always use db_manager.get_all and Python-side filtering for both API and ORM
+            all_pos = self.db_manager.get_all(PurchaseOrder)
+            po = next((p for p in all_pos if get_id(p) == po_id), None)
+            if not po:
+                QMessageBox.warning(self, "Error", "Selected PO not found.")
+                return
+            po_reference = get_attr(po, 'po_reference', 'N/A')
+            all_coupons = self.db_manager.get_all(PatientCoupon)
+            date_from_dt = dt.combine(date_from, dt.min.time())
+            date_to_dt = dt.combine(date_to, dt.max.time())
+            coupons = []
+            for c in all_coupons:
+                dn_num = get_attr(c, 'delivery_note_number', None)
+                if not dn_num:
+                    continue
+                if not get_attr(c, 'date_received', None):
+                    continue
+                # Date filter
+                date_val = get_attr(c, 'date_received', None)
+                coupon_dt = None
+                if isinstance(date_val, dt):
+                    coupon_dt = date_val
+                elif isinstance(date_val, str):
+                    try:
+                        coupon_dt = dt.fromisoformat(date_val)
+                    except Exception:
+                        continue
+                if not coupon_dt or not (date_from_dt <= coupon_dt <= date_to_dt):
+                    continue
+                # GRV filter
                 if grv_filter:
-                    query = query.filter(
-                        PatientCoupon.grv_reference.isnot(None),
-                        PatientCoupon.grv_reference != ""
-                    )
-                
-                coupons = query.all()
-                
-                if not coupons:
-                    QMessageBox.information(
-                        self, 
-                        "No Data", 
-                        "No delivery notes found matching the selected criteria."
-                    )
-                    return
-                
-                # Group coupons by delivery note number
-                dn_groups: Dict[str, List[PatientCoupon]] = {}
-                for coupon in coupons:
-                    dn_num = coupon.delivery_note_number
-                    if dn_num not in dn_groups:
-                        dn_groups[dn_num] = []
-                    dn_groups[dn_num].append(coupon)
-                
-                # Prepare DN data
-                dn_data = []
-                for dn_number, dn_coupons in dn_groups.items():
-                    # Get data from first coupon (all should have same centre)
-                    first_coupon = dn_coupons[0]
-                    centre_name = first_coupon.medical_centre.name if first_coupon.medical_centre else "Unknown"
-                    
-                    # Get date received (use earliest date if multiple)
-                    date_received = min(c.date_received for c in dn_coupons if c.date_received)
-                    
-                    # Get verification reference (assuming all coupons in DN have same verification)
-                    verification_ref = first_coupon.verification_reference or "-"
-                    
-                    # Get GRV reference
-                    grv_ref = first_coupon.grv_reference or "-"
-                    
-                    # Calculate total pieces
-                    total_pieces = sum(c.quantity_pieces for c in dn_coupons)
-                    
-                    # Calculate cartons
-                    total_cartons = total_pieces / pieces_per_carton
-                    
-                    dn_data.append({
-                        'dn_number': dn_number,
-                        'centre_name': centre_name,
-                        'date_received': date_received,
-                        'verification_ref': verification_ref,
-                        'grv_ref': grv_ref,
-                        'total_pieces': total_pieces,
-                        'total_cartons': total_cartons
-                    })
-                
-                # Sort by date received
-                dn_data.sort(key=lambda x: x['date_received'])
-                
-                # Generate Excel file
-                self.create_excel_report(po_reference, dn_data, pieces_per_carton)
-                
+                    grv_ref = get_attr(c, 'grv_reference', None)
+                    if not grv_ref:
+                        continue
+                coupons.append(c)
+            if not coupons:
+                QMessageBox.information(
+                    self, 
+                    "No Data", 
+                    "No delivery notes found matching the selected criteria."
+                )
+                return
+            # Group coupons by delivery note number
+            dn_groups = {}
+            for coupon in coupons:
+                dn_num = get_attr(coupon, 'delivery_note_number', None)
+                if dn_num not in dn_groups:
+                    dn_groups[dn_num] = []
+                dn_groups[dn_num].append(coupon)
+            # Prepare DN data
+            dn_data = []
+            # Preload all medical centres for id lookup
+            all_centres = self.db_manager.get_all(MedicalCentre)
+            def resolve_centre_name(coupon, po):
+                # 1. Try coupon.medical_centre.name
+                name = get_nested_attr(coupon, 'medical_centre.name', None)
+                if name and name != 'Unknown':
+                    return name
+                # 2. Try coupon.medical_centre_id
+                centre_id = get_attr(coupon, 'medical_centre_id', None)
+                if centre_id:
+                    for centre in all_centres:
+                        if get_id(centre) == centre_id:
+                            return get_name(centre)
+                # 3. Try PO.medical_centre.name
+                name = get_nested_attr(po, 'medical_centre.name', None)
+                if name and name != 'Unknown':
+                    return name
+                # 4. Try PO.medical_centre_id
+                centre_id = get_attr(po, 'medical_centre_id', None)
+                if centre_id:
+                    for centre in all_centres:
+                        if get_id(centre) == centre_id:
+                            return get_name(centre)
+                return 'Unknown'
+            for dn_number, dn_coupons in dn_groups.items():
+                first_coupon = dn_coupons[0]
+                centre_name = resolve_centre_name(first_coupon, po)
+                # Get date received (use earliest date if multiple)
+                date_received = None
+                for c in dn_coupons:
+                    date_val = get_attr(c, 'date_received', None)
+                    coupon_dt = None
+                    if isinstance(date_val, dt):
+                        coupon_dt = date_val
+                    elif isinstance(date_val, str):
+                        try:
+                            coupon_dt = dt.fromisoformat(date_val)
+                        except Exception:
+                            continue
+                    if not date_received or (coupon_dt and coupon_dt < date_received):
+                        date_received = coupon_dt
+                verification_ref = get_attr(first_coupon, 'verification_reference', '-')
+                grv_ref = get_attr(first_coupon, 'grv_reference', '-')
+                total_pieces = sum(get_attr(c, 'quantity_pieces', 0) for c in dn_coupons)
+                total_cartons = total_pieces / pieces_per_carton
+                dn_data.append({
+                    'dn_number': dn_number,
+                    'centre_name': centre_name,
+                    'date_received': date_received,
+                    'verification_ref': verification_ref,
+                    'grv_ref': grv_ref,
+                    'total_pieces': total_pieces,
+                    'total_cartons': total_cartons
+                })
+            dn_data.sort(key=lambda x: x['date_received'] or dt.min)
+            self.create_excel_report(po_reference, dn_data, pieces_per_carton)
         except Exception as e:
             QMessageBox.critical(
                 self,
@@ -265,11 +288,11 @@ class DNcopiesReportDialog(QDialog):
             wb = load_workbook(template_path)
             ws = wb.active
             
-            # Fill B11: PO reference
-            ws['B11'] = po_reference
+            # Fill B11: PO reference as 'PO-{ref}'
+            ws['B11'] = f"PO-{po_reference}"
             
-            # Fill A12: Current date
-            ws['A12'] = datetime.now().strftime('%d-%b-%Y')
+            # Fill A12: Current date as 'Date: {date}'
+            ws['A12'] = f"Date: {datetime.now().strftime('%d-%b-%Y')}"
             
             # Fill data starting from row 15
             from copy import copy

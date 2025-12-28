@@ -234,10 +234,8 @@ class TransactionDialog(QDialog):
             info_text += f"<br><span style='color: #ffc107; font-weight: bold;'>⚠️ Low stock ({total_available} pieces)</span>"
         else:
             info_text += "<br><span style='color: #28a745; font-weight: bold;'>✅ Stock available</span>"
-        # Update both displays (for compatibility)
-        self.stock_info_display.setText(info_text)
-        if hasattr(self, 'stock_info_label'):
-            self.stock_info_label.setText(info_text)
+        # Update display
+        self.stock_info_label.setText(info_text)
     
     def validate_input(self) -> tuple[bool, str]:
         """Validate all input fields."""
@@ -271,10 +269,17 @@ class TransactionDialog(QDialog):
             return False, "Quantity must be greater than 0"
         
         # Validate quantity against purchase remaining stock
-        with self.db_manager.get_session() as session:
-            purchase = session.query(Purchase).get(purchase_id)
-            if purchase and quantity > purchase.remaining_stock:
-                return False, f"Quantity ({quantity}) exceeds available stock ({purchase.remaining_stock})"
+        if hasattr(self.db_manager, 'get_purchase'):
+            purchase = self.db_manager.get_purchase(purchase_id)
+            remaining_stock = get_attr(purchase, 'remaining_stock', 0)
+            if purchase and quantity > remaining_stock:
+                return False, f"Quantity ({quantity}) exceeds available stock ({remaining_stock})"
+        else:
+            with self.db_manager.get_session() as session:
+                purchase = session.query(Purchase).get(purchase_id)
+                remaining_stock = get_attr(purchase, 'remaining_stock', 0)
+                if purchase and quantity > remaining_stock:
+                    return False, f"Quantity ({quantity}) exceeds available stock ({remaining_stock})"
         
         return True, ""
     
@@ -339,29 +344,66 @@ class TransactionDialog(QDialog):
                 )
                 return
             from src.database.models import Transaction
-            transaction = Transaction(
-                transaction_reference=reference if reference else None,
-                purchase_id=purchase_id,
-                product_id=product_id,
-                distribution_location_id=location_id,
-                quantity=quantity,
-                transaction_date=transaction_date
-            )
-            # Reduce purchase stock
-            purchase.remaining_stock -= quantity
-            # Save transaction and update stock (implementation may vary)
-            self.db_manager.add(transaction)
-            self.db_manager.add(purchase)
-            transaction_id = get_id(transaction)
-            QMessageBox.information(
-                self,
-                "Transaction Created",
-                f"✅ Transaction created successfully!\n\n"
-                f"Transaction Reference: {reference}\n"
-                f"Transaction ID: {transaction_id}\n\n"
-                f"Stock has been updated."
-            )
-            self.accept()
+            if hasattr(self.db_manager, 'create_transaction'):
+                # API mode: call create_transaction with all required fields
+                try:
+                    result = self.db_manager.create_transaction(
+                        purchase_id=purchase_id,
+                        product_id=product_id,
+                        quantity=quantity,
+                        distribution_location_id=location_id,
+                        transaction_date=transaction_date.isoformat() if hasattr(transaction_date, 'isoformat') else transaction_date,
+                        transaction_reference=reference if reference else None,
+                        notes=None
+                    )
+                    transaction_id = result.get('id')
+                    # Reduce purchase stock in local cache (if needed)
+                    if isinstance(purchase, dict):
+                        purchase['remaining_stock'] = get_attr(purchase, 'remaining_stock', 0) - quantity
+                    QMessageBox.information(
+                        self,
+                        "Transaction Created",
+                        f"✅ Transaction created successfully!\n\n"
+                        f"Transaction Reference: {reference}\n"
+                        f"Transaction ID: {transaction_id}\n\n"
+                        f"Stock has been updated."
+                    )
+                    self.accept()
+                except Exception as e:
+                    QMessageBox.critical(
+                        self,
+                        "Error",
+                        f"Failed to create transaction (API):\n{str(e)}\n\nPurchase stock has NOT been deducted."
+                    )
+            else:
+                # Local ORM: create and add transaction
+                transaction = Transaction(
+                    transaction_reference=reference if reference else None,
+                    purchase_id=purchase_id,
+                    product_id=product_id,
+                    distribution_location_id=location_id,
+                    quantity=quantity,
+                    transaction_date=transaction_date
+                )
+                if hasattr(transaction, 'transaction_type'):
+                    transaction.transaction_type = 'transfer'
+                # Reduce purchase stock (dict/ORM safe)
+                if isinstance(purchase, dict):
+                    purchase['remaining_stock'] = get_attr(purchase, 'remaining_stock', 0) - quantity
+                else:
+                    purchase.remaining_stock -= quantity
+                self.db_manager.add(transaction)
+                self.db_manager.add(purchase)
+                transaction_id = get_id(transaction)
+                QMessageBox.information(
+                    self,
+                    "Transaction Created",
+                    f"✅ Transaction created successfully!\n\n"
+                    f"Transaction Reference: {reference}\n"
+                    f"Transaction ID: {transaction_id}\n\n"
+                    f"Stock has been updated."
+                )
+                self.accept()
         except Exception as e:
             QMessageBox.critical(
                 self,

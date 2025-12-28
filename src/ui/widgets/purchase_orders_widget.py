@@ -205,23 +205,10 @@ class PurchaseOrdersWidget(QWidget):
             qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(row, 3, qty_item)
 
-            # Remaining Stock
             remaining_stock = get_attr(order, 'remaining_stock', 0)
+            quantity = get_attr(order, 'quantity', 0)
             remaining_item = QTableWidgetItem(str(remaining_stock))
             remaining_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-
-            # Color code based on stock level
-            percentage = (remaining_stock / qty * 100) if qty > 0 else 0
-            if percentage == 0:
-                remaining_item.setBackground(QColor(Colors.ERROR))
-                remaining_item.setForeground(QColor("white"))
-            elif percentage <= 20:
-                remaining_item.setBackground(QColor(Colors.WARNING))
-                remaining_item.setForeground(QColor("white"))
-            elif percentage <= 50:
-                remaining_item.setBackground(QColor(Colors.INFO))
-                remaining_item.setForeground(QColor("white"))
-            
             self.table.setItem(row, 4, remaining_item)
             
             # Unit Price
@@ -237,12 +224,14 @@ class PurchaseOrdersWidget(QWidget):
                 unit_item.setForeground(QColor(Colors.TEXT_SECONDARY))
             self.table.setItem(row, 5, unit_item)
             
-            # Tax
-            if order.tax_rate is not None and order.tax_amount is not None:
-                tax_text = f"{float(order.tax_rate):.1f}%"
+            # Tax (support dict and ORM)
+            tax_rate = get_attr(order, 'tax_rate', None)
+            tax_amount = get_attr(order, 'tax_amount', None)
+            if tax_rate is not None and tax_amount is not None:
+                tax_text = f"{float(tax_rate):.1f}%"
                 tax_item = QTableWidgetItem(tax_text)
                 tax_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                tax_item.setToolTip(f"Tax: {float(order.tax_amount):.3f} BHD ({float(order.tax_rate):.1f}%)")
+                tax_item.setToolTip(f"Tax: {float(tax_amount):.3f} BHD ({float(tax_rate):.1f}%)")
             else:
                 tax_item = QTableWidgetItem("-")
                 tax_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -251,15 +240,18 @@ class PurchaseOrdersWidget(QWidget):
             self.table.setItem(row, 6, tax_item)
             
             # Total (with tax if available)
-            if order.total_with_tax is not None:
-                total_cost = f"{float(order.total_with_tax):.3f}"
+            total_with_tax = get_attr(order, 'total_with_tax', None)
+            if total_with_tax is not None:
+                total_cost = f"{float(total_with_tax):.3f}"
                 total_item = QTableWidgetItem(total_cost)
                 total_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 total_item.setForeground(QColor(Colors.SUCCESS))
-                tooltip = f"Subtotal: {float(order.total_without_tax):.3f} BHD\n"
-                if order.tax_amount:
-                    tooltip += f"Tax: {float(order.tax_amount):.3f} BHD\n"
-                tooltip += f"Total: {float(order.total_with_tax):.3f} BHD"
+                total_without_tax = get_attr(order, 'total_without_tax', 0)
+                tooltip = f"Subtotal: {float(total_without_tax):.3f} BHD\n"
+                tax_amount = get_attr(order, 'tax_amount', None)
+                if tax_amount:
+                    tooltip += f"Tax: {float(tax_amount):.3f} BHD\n"
+                tooltip += f"Total: {float(total_with_tax):.3f} BHD"
                 total_item.setToolTip(tooltip)
             else:
                 total_item = QTableWidgetItem("-")
@@ -269,16 +261,17 @@ class PurchaseOrdersWidget(QWidget):
             self.table.setItem(row, 7, total_item)
             
             # Status
-            if order.remaining_stock == 0:
-                status = "Depleted"
+            remaining_stock = get_attr(order, 'remaining_stock', 0)
+            quantity = get_attr(order, 'quantity', 0)
+            if remaining_stock == 0:
+                status = "Used Up"
                 status_color = QColor(Colors.ERROR)
-            elif order.remaining_stock == order.quantity:
-                status = "Full"
+            elif remaining_stock == quantity:
+                status = "Unused"
                 status_color = QColor(Colors.SUCCESS)
             else:
                 status = "Partial"
                 status_color = QColor(Colors.INFO)
-            
             status_item = QTableWidgetItem(status)
             status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             status_item.setBackground(status_color)
@@ -360,12 +353,14 @@ class PurchaseOrdersWidget(QWidget):
             return
         
         # Check if stock has been used
-        if order.remaining_stock < order.quantity:
+        quantity = get_attr(order, 'quantity', 0)
+        remaining_stock = get_attr(order, 'remaining_stock', 0)
+        if remaining_stock < quantity:
             QMessageBox.warning(
                 self,
                 "Cannot Delete",
                 f"This purchase order has been partially or fully used.\n"
-                f"Original: {order.quantity}, Remaining: {order.remaining_stock}\n\n"
+                f"Original: {quantity}, Remaining: {remaining_stock}\n\n"
                 f"Cannot delete orders with stock movements."
             )
             return
@@ -377,7 +372,7 @@ class PurchaseOrdersWidget(QWidget):
             f"Are you sure you want to delete:\n\n"
             f"PO Reference: {get_attr(order, 'po_reference', '')}\n"
             f"Product: {get_nested_attr(order, 'product.name', 'Unknown')}\n"
-            f"Quantity: {order.quantity}\n\n"
+            f"Quantity: {get_attr(order, 'quantity', 0)}\n\n"
             f"This action cannot be undone.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No

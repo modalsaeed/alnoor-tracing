@@ -1,0 +1,8 @@
+Category,Item,Quantity,Unit Price (BHD),Total Price (BHD),Notes
+Local Purchase Orders (Remaining),,,,,
+Local PO,3123123 - 123123,3310002,12.000,39720024.000,Total: 3333333 | Used: 23331
+,Local PO Total,3310002,,,
+Supplier Purchases (Remaining),,,,,
+Supplier Purchase,31234 - 123123,20000,1.000,20000.000,Total: 23331 | Used: 3331
+,Supplier Purchase Total,20000,,,
+Distributed to Pharmacies (28/11/2025 - 28/12/2025),,,,,

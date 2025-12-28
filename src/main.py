@@ -37,10 +37,21 @@ def main():
     # Set application style
     app.setStyle('Fusion')
     
+    import signal
+    db_manager = None
+    def handle_exit(*args):
+        nonlocal db_manager
+        if db_manager is not None:
+            db_manager.close()
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, handle_exit)
+    signal.signal(signal.SIGTERM, handle_exit)
+
     try:
         # Initialize database
         db_manager = get_db_manager()
-        
+
         # Show connection debug info on startup (if enabled in config)
         if should_show_debug_popup():
             debug_info = get_connection_debug_info()
@@ -52,14 +63,14 @@ def main():
                 msg.setInformativeText("\n".join(debug_info))
                 msg.setStandardButtons(QMessageBox.StandardButton.Ok)
                 msg.exec()
-        
+
         # Create and show main window
         window = MainWindow(db_manager)
         window.show()
-        
+
         # Run application event loop
         sys.exit(app.exec())
-        
+
     except Exception as e:
         # Show error dialog if initialization fails
         error_box = QMessageBox()
@@ -71,7 +82,7 @@ def main():
         sys.exit(1)
     finally:
         # Clean up database connection
-        if 'db_manager' in locals():
+        if db_manager is not None:
             db_manager.close()
 
 
